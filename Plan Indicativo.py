@@ -142,7 +142,6 @@ PROY_COLS = [
 ]
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)
 def load_indicadores():
     cols = ",".join(PI_COLS)
     return _rest("Plan%20Indicativo", params={"select": cols, "order": "Serie Numero.asc"}) or []
@@ -407,6 +406,10 @@ def main():
         st.markdown(f'<div class="error-box"><strong>Error al conectar con Supabase:</strong><br>{e}</div>', unsafe_allow_html=True)
         return
 
+    if not data:
+        st.warning("La consulta a Supabase devolvio 0 registros. Verifica que la tabla tenga datos y que RLS este desactivado o tenga politica de lectura para anon.")
+        st.stop()
+
     responsables = sorted({d.get("Responsable", "") for d in data if d.get("Responsable")})
 
     # Header
@@ -423,9 +426,9 @@ def main():
     # Filtros
     fc1, fc2 = st.columns([2, 2])
     with fc1:
-        search = st.text_input("", placeholder="Buscar por código, línea o indicador...", label_visibility="collapsed")
+        search = st.text_input("Buscar", placeholder="Buscar por código, línea o indicador...", label_visibility="collapsed")
     with fc2:
-        selected_resp = st.multiselect("", options=responsables, placeholder="Filtrar por responsable...", label_visibility="collapsed", key="filter_resp")
+        selected_resp = st.multiselect("Responsable", options=responsables, placeholder="Filtrar por responsable...", label_visibility="collapsed", key="filter_resp")
 
     # Aplicar filtros
     filtered = data
