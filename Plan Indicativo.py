@@ -1,5 +1,4 @@
 import streamlit as st
-from supabase import create_client, Client
 import pandas as pd
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -338,11 +337,21 @@ html, body, [class*="css"] {
 SUPABASE_URL = "https://inkaifstkrizlaowkerb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua2FpZnN0a3Jpemxhb3drZXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODI3MDAsImV4cCI6MjA4ODc1ODcwMH0.fXvVBRQ2s1WBI5Gs_JFiJQb-GF00pF5PFgSa1GO-A0k"
 
-@st.cache_resource
-def get_client() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+import requests as _req
 
-supabase = get_client()
+_H = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation",
+}
+
+def _rest(path, method="GET", params=None, body=None):
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    r = _req.request(method, url, headers=_H, params=params, json=body, timeout=15)
+    if not r.ok:
+        raise Exception(r.json())
+    return r.json() if r.text.strip() else None
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
 @st.cache_data(ttl=60)
@@ -358,22 +367,19 @@ def load_indicadores():
         "Meta Fisica Esperada 2026", "Meta Fisica Esperada 2027",
         "Indicador de resultado",
     ])
-    res = supabase.table("Plan Indicativo").select(cols).order("Serie Numero").execute()
-    return res.data or []
+    return _rest("Plan%20Indicativo", params={"select": cols, "order": "Serie Numero.asc"}) or []
 
 def load_proyectos(codigo_meta: str):
-    res = supabase.table("Proyectos").select("*").eq("Codigo Meta", codigo_meta).execute()
-    return res.data or []
+    return _rest("Proyectos", params={"select": "*", "Codigo Meta": f"eq.{codigo_meta}"}) or []
 
 def save_proyecto(data: dict, is_new: bool, proyecto_id=None):
     if is_new:
-        res = supabase.table("Proyectos").insert(data).execute()
+        return _rest("Proyectos", method="POST", body=data)
     else:
-        res = supabase.table("Proyectos").update(data).eq("IdProyecto", proyecto_id).execute()
-    return res
+        return _rest(f"Proyectos?IdProyecto=eq.{proyecto_id}", method="PATCH", body=data)
 
 def delete_proyecto(proyecto_id: int):
-    supabase.table("Proyectos").delete().eq("IdProyecto", proyecto_id).execute()
+    _rest(f"Proyectos?IdProyecto=eq.{proyecto_id}", method="DELETE")
 
 # ── Session state helpers ──────────────────────────────────────────────────────
 def ss(key, default=None):
