@@ -557,19 +557,21 @@ def to_bytesio(source) -> io.BytesIO:
 
 
 def read_excel_safe(source, table_name: str, columns: list = None):
+
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            tmp.write(source)
-            tmp_path = tmp.name
 
         kwargs = {"table_name": table_name}
         if columns:
             kwargs["columns"] = columns
 
-        return pl.read_excel(tmp_path, **kwargs)
+        if isinstance(source, str):
+            return pl.read_excel(source, **kwargs)
 
-    except Exception:
-        return None
+        return pl.read_excel(to_bytesio(source), **kwargs)
+
+    except Exception as e:
+        print("ERROR LEYENDO EXCEL:", e)
+        raise e
 
 
 def fetch_github_file(url: str) -> Optional[bytes]:
