@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import io
 import requests
 from typing import Optional
+import tempfile
 
 # -------------------------------------------------
 # PALETA CORPORATIVA
@@ -555,15 +556,18 @@ def to_bytesio(source) -> io.BytesIO:
     return io.BytesIO(source)
 
 
-def read_excel_safe(source, table_name: str, columns: list = None) -> Optional[pl.DataFrame]:
-    """Lee una tabla nombrada de un archivo Excel. Retorna None si falla."""
+def read_excel_safe(source, table_name: str, columns: list = None):
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp.write(source)
+            tmp_path = tmp.name
+
         kwargs = {"table_name": table_name}
         if columns:
             kwargs["columns"] = columns
-        if isinstance(source, str):
-            return pl.read_excel(source, **kwargs)
-        return pl.read_excel(to_bytesio(source), **kwargs)
+
+        return pl.read_excel(tmp_path, **kwargs)
+
     except Exception:
         return None
 
