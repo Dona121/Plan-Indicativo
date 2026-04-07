@@ -702,6 +702,12 @@ def load_and_process(
 
     # ── Plan Indicativo ─────────────────────────────────────
     pi = read_excel_safe(pi_bytes, "tblPlanIndicativo_2")
+
+    pi = pi.select(
+        pl.all().name.map(
+            lambda x: x.strip().replace("\n"," ").replace("  "," ")
+        )
+    )
     if pi is None:
         errors.append("Plan Indicativo")
         return None, errors
