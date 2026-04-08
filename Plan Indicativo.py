@@ -358,15 +358,30 @@ def load_all(pi_b, h24_b, r24_b, h25_b, r25_b, h26_b, r26_b):
 # GRAFICO GAUGE
 # ------------------------------------------------------------------
 def gauge(val, title, color):
+    # El gauge muestra hasta 120 para que Superior (>=100%) sea visible
+    display_val = min(val * 100, 120)
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=val*100,
-        number={"suffix":"%","font":{"size":30,"color":color,"family":"Sora"}},
+        mode="gauge+number", value=display_val,
+        number={"suffix":"%","font":{"size":30,"color":color,"family":"Sora"},
+                "valueformat":".1f"},
         title={"text":title,"font":{"size":12,"color":"#6b7280"}},
-        gauge={"axis":{"range":[0,100],"tickfont":{"size":9}},
-               "bar":{"color":color,"thickness":.28},"bgcolor":"#f3f4f6","borderwidth":0,
-               "steps":[{"range":[0,30],"color":"#fee2e2"},{"range":[30,60],"color":"#fef3c7"},
-                        {"range":[60,100],"color":"#d1fae5"},{"range":[100,100],"color":"#a7f3d0"}]}))
-    fig.update_layout(height=190, margin=dict(t=35,b=5,l=15,r=15), paper_bgcolor="white")
+        gauge={
+            "axis":{"range":[0,120],"tickvals":[0,29,59,99,120],
+                    "ticktext":["0%","29%","59%","99%","≥100%"],
+                    "tickfont":{"size":9}},
+            "bar":{"color":color,"thickness":.28},
+            "bgcolor":"#f3f4f6","borderwidth":0,
+            # Semaforización oficial: Mínimo 0-29 | Medio 30-59 | Alto 60-99 | Superior ≥100
+            "steps":[
+                {"range":[0,  29], "color":"#fee2e2"},   # Mínimo  - salmon
+                {"range":[29, 59], "color":"#fef3c7"},   # Medio   - amarillo
+                {"range":[59, 99], "color":"#dbeafe"},   # Alto    - azul claro
+                {"range":[99,120], "color":"#d1fae5"},   # Superior- verde
+            ],
+            "threshold":{"line":{"color":"#374151","width":2},"thickness":.75,"value":display_val},
+        }
+    ))
+    fig.update_layout(height=210, margin=dict(t=40,b=5,l=15,r=15), paper_bgcolor="white")
     return fig
 
 # ------------------------------------------------------------------
@@ -391,12 +406,21 @@ def html_table(df: pd.DataFrame, col_pct: list = None, col_money: list = None,
         for c in df.columns:
             v = row[c]
             if c in col_pct and pd.notna(v):
-                raw = float(v) if not isinstance(v,str) else float(v.replace("%",""))/100
+                # Acepta float 0-1 (ej. 0.92) o float >1 ya multiplicado (ej. 92.0)
+                try:
+                    raw_f = float(str(v).replace("%","").strip())
+                    # Si el valor está en escala 0-1, lo dejamos; si está en 0-100, dividimos
+                    raw = raw_f if raw_f <= 1.5 else raw_f / 100.0
+                except (ValueError, TypeError):
+                    raw = 0.0
                 color = semaforo_color(raw)
                 lbl   = semaforo_label(raw)
                 cells += f'<td>{pill_html(lbl,color)} &nbsp; {fmt_pct(raw)}</td>'
             elif c in col_money and pd.notna(v):
-                cells += f'<td>${float(v):,.0f}</td>'
+                try:
+                    cells += f'<td>${float(v):,.0f}</td>'
+                except (ValueError, TypeError):
+                    cells += f"<td>{v}</td>"
             elif c == col_sem and pd.notna(v):
                 color = SEM_COLORS.get(str(v), C["cafe"])
                 cells += f'<td>{pill_html(str(v),color)}</td>'
@@ -577,24 +601,26 @@ for y in ["2024","2025","2026","2027"]:
         dist_metas[y] = 0.0
 
 # Avance ponderado vigencia y cuatrienio (del notebook)
-avance_pond_vig   = 0.0
-avance_pond_acum  = 0.0
-if n_prog > 0 and CP in pf.columns:
-    # ponderado_vigencia: (metas_programadas_programa / n_prog) * promedio_avance_programa
-    pv = (pf.filter(pl.col(CM).fill_null(0)!=0)
+avance_pond_vig  = 0.0
+avance_pond_acum = 0.0
+
+# avance_pond_vig: ponderado por peso de cada programa en metas programadas de la vigencia
+if n_prog > 0 and CP in pf.columns and "Programa PDD" in pf.columns:
+    pv = (pf.filter(pl.col(CM).fill_null(0) != 0)
             .group_by("Programa PDD")
             .agg(pl.col(CP).fill_null(0).mean().alias("prom"),
                  pl.col("Codigo Meta").len().alias("n_prog_p"))
-            .with_columns((pl.col("n_prog_p")/n_prog).alias("peso")))
-    avance_pond_vig = float(pv.select((pl.col("prom")*pl.col("peso")).sum()).item() or 0)
+            .with_columns((pl.col("n_prog_p") / n_prog).alias("peso")))
+    avance_pond_vig = float(pv.select((pl.col("prom") * pl.col("peso")).sum()).item() or 0)
 
-if COL_PCT_ACUM in pf.columns:
+# avance_pond_acum: ponderado por peso de cada programa sobre el total de metas
+if COL_PCT_ACUM in pf.columns and "Programa PDD" in pf.columns and len(pf) > 0:
     n_tot = len(pf)
     pc = (pf.group_by("Programa PDD")
             .agg(pl.col(COL_PCT_ACUM).fill_null(0).mean().alias("prom"),
                  pl.col("Codigo Meta").len().alias("n_p"))
-            .with_columns((pl.col("n_p")/n_tot).alias("peso")))
-    avance_pond_acum = float(pc.select((pl.col("prom")*pl.col("peso")).sum()).item() or 0)
+            .with_columns((pl.col("n_p") / n_tot).alias("peso")))
+    avance_pond_acum = float(pc.select((pl.col("prom") * pl.col("peso")).sum()).item() or 0)
 
 # ------------------------------------------------------------------
 # TABS
@@ -931,15 +957,16 @@ with tab3:
         if pc in tbl.columns:
             tbl[pc] = tbl[pc].fillna(0)
     tbl_show = tbl.copy()
-    tbl_show[CCA if CCA in tbl_show.columns else tbl_show.columns[-1]]  # ensure exists
+    # Asegurar que la columna de categoria existe antes de usarla en html_table
+    col_sem_det = CCA if CCA in tbl_show.columns else None
     st.markdown(html_table(tbl_show,
-        col_pct=[CP,COL_PCT_ACUM] if COL_PCT_ACUM in tbl_show.columns else [CP],
-        col_sem=CCA if CCA in tbl_show.columns else None,
+        col_pct=[CP, COL_PCT_ACUM] if COL_PCT_ACUM in tbl_show.columns else [CP],
+        col_sem=col_sem_det,
         tooltips={
-            CP:f"PORCENTAJE DE EJECUCION {vig} del indicador. Valor decimal (0.92 = 92%).",
-            COL_PCT_ACUM:"Avance acumulado frente a la meta total del cuatrienio 2024-2027.",
-            CCA:f"Semaforización oficial: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
-            CM:f"Meta Fisica Esperada en {vig} para este indicador.",
+            CP: f"PORCENTAJE DE EJECUCION {vig} del indicador (0.92 = 92%).",
+            COL_PCT_ACUM: "Avance acumulado frente a la meta total del cuatrienio 2024-2027.",
+            CCA: f"Semaforización: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
+            CM: f"Meta Fisica Esperada en {vig} para este indicador.",
         }),
         unsafe_allow_html=True)
 
@@ -1008,8 +1035,7 @@ with tab4:
                 tbl_dep = dep_pd[[name_c,"N Metas","N Superiores","Avance","Ejec_Acum","Semaforo"]].copy()
                 tbl_dep.columns = ["Dependencia","Metas Prog.","Metas Superiores",
                                     f"% Avance {vig}","% Avance Acumulado","Semaforo"]
-                tbl_dep[f"% Avance {vig}"]    = tbl_dep[f"% Avance {vig}"].apply(lambda x: x)
-                tbl_dep["% Avance Acumulado"] = tbl_dep["% Avance Acumulado"].apply(lambda x: x)
+                # Dejar como float 0-1 para que html_table aplique la semaforización correctamente
                 tbl_dep = tbl_dep.sort_values(f"% Avance {vig}", ascending=False).reset_index(drop=True)
                 st.markdown(html_table(tbl_dep,
                     col_pct=[f"% Avance {vig}","% Avance Acumulado"],
