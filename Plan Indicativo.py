@@ -656,13 +656,13 @@ with tab1:
     cg1,cg2,cg3 = st.columns(3)
     with cg1: st.plotly_chart(gauge(avance_pond_vig, f"Avance Ponderado {vig}",
                                      semaforo_color(avance_pond_vig)),
-                               use_container_width=True, key="g1")
+                               width="stretch", key="g1")
     with cg2: st.plotly_chart(gauge(avance_pond_acum, "Avance Ponderado Cuatrienio",
                                      semaforo_color(avance_pond_acum)),
-                               use_container_width=True, key="g2")
+                               width="stretch", key="g2")
     with cg3: st.plotly_chart(gauge(pct_fin, f"Ejecucion Financiera {vig}",
                                      semaforo_color(pct_fin)),
-                               use_container_width=True, key="g3")
+                               width="stretch", key="g3")
 
     st.caption(
         f"Avance Ponderado Vigencia: cada programa PDD aporta segun la proporcion de sus metas "
@@ -694,7 +694,7 @@ with tab1:
             height=320, paper_bgcolor="white", plot_bgcolor="#fafafa",
             font={"family":"DM Sans"}, margin=dict(t=50,b=20,l=20,r=20),
         )
-        st.plotly_chart(fig_dist, use_container_width=True, key="dist_bar")
+        st.plotly_chart(fig_dist, width="stretch", key="dist_bar")
 
     with dcol2:
         st.markdown("**Como se interpreta**")
@@ -737,7 +737,7 @@ with tab1:
                                        height=340, paper_bgcolor="white",
                                        font={"family":"DM Sans"},
                                        margin=dict(t=50,b=10,l=10,r=10))
-                st.plotly_chart(fig_pie, use_container_width=True, key="pie_cat")
+                st.plotly_chart(fig_pie, width="stretch", key="pie_cat")
             with cp2:
                 # Tabla resumen categorias
                 total_prog = cat_df["n"].sum()
@@ -790,7 +790,7 @@ with tab2:
                         height=max(320,len(lf)*46), paper_bgcolor="white",
                         plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                         margin=dict(l=20,r=100,t=30,b=20))
-                    st.plotly_chart(fig_lf, use_container_width=True, key="bar_lf")
+                    st.plotly_chart(fig_lf, width="stretch", key="bar_lf")
                     st.caption("Ejecucion / Programacion de la vigencia. Semaforización oficial aplicada.")
                 with gtab2:
                     lf_show = lf[[cL, CPF, CEF, "Pct"]].copy()
@@ -828,7 +828,7 @@ with tab2:
                         height=max(320,len(sf)*46), paper_bgcolor="white",
                         plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                         margin=dict(l=20,r=100,t=30,b=20))
-                    st.plotly_chart(fig_sf, use_container_width=True, key="bar_sf")
+                    st.plotly_chart(fig_sf, width="stretch", key="bar_sf")
                 with gtab2:
                     sf_show = sf[["Sector PDD",CPF,CEF,"Pct"]].copy()
                     sf_show.columns = ["Sector PDD","Programacion ($)","Ejecucion ($)","% Avance"]
@@ -855,7 +855,7 @@ with tab2:
                 plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                 legend=dict(orientation="h",y=1.1),
                 margin=dict(l=20,r=20,t=60,b=20))
-            st.plotly_chart(fig_acum, use_container_width=True, key="bar_acum")
+            st.plotly_chart(fig_acum, width="stretch", key="bar_acum")
             st.caption("Programacion: suma ICLD+ICDE+SGP+Regalias+Credito+Cofinanciacion+Otras Fuentes. "
                        "Ejecucion: RP Hacienda + Pagos Regalias.")
 
@@ -866,23 +866,6 @@ with tab3:
     # Lineas
     sec(f"Eficacia Operativa por Linea Estrategica - {vig}")
     if CP in pf.columns and cL in pf.columns and CM in pf.columns and n_prog > 0:
-        # Calculo ponderado_vigencia agrupado por linea (del notebook: avance_vigencia_lineas)
-        pv_lin = (
-            pf.filter(pl.col(CM).fill_null(0)!=0)
-              .group_by([cL,"Programa PDD"])
-              .agg(pl.col(CP).fill_null(0).mean().alias("prom_prog"),
-                   pl.col("Codigo Meta").len().alias("n_p"))
-              .with_columns((pl.col("n_p")/n_prog).alias("peso"))
-              .group_by(cL)
-              .agg((pl.col("prom_prog")*pl.col("peso")).sum().alias("Aporte"),
-                   pl.col("n_p").sum().alias("N Metas Programadas"))
-              .with_columns(
-                  (pl.col("N Metas Programadas")/n_prog).alias("Peso Linea"),
-                  pl.when(pl.col("Peso Linea")==0).then(0.0)
-                    .otherwise(pl.col("Aporte")/pl.col("N Metas Programadas")*n_prog).alias("Eficacia Operativa")
-              )
-        )
-        # Simplificado: promedio ponderado directo
         pv_lin2 = (
             pf.filter(pl.col(CM).fill_null(0)!=0)
               .group_by(cL)
@@ -903,7 +886,7 @@ with tab3:
                 height=max(320,len(pv_lin2)*48), paper_bgcolor="white",
                 plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                 margin=dict(l=20,r=100,t=30,b=20))
-            st.plotly_chart(fig_fl, use_container_width=True, key="bar_fl")
+            st.plotly_chart(fig_fl, width="stretch", key="bar_fl")
             st.caption(f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas con Meta Fisica Esperada > 0.")
         with gtab2:
             pv_show = pv_lin2[[cL,"Avance","N Metas"]].copy()
@@ -939,7 +922,7 @@ with tab3:
                     height=max(320,len(sf_fis)*48), paper_bgcolor="white",
                     plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                     margin=dict(l=20,r=100,t=30,b=20))
-                st.plotly_chart(fig_sf_fis, use_container_width=True, key="bar_sf_fis")
+                st.plotly_chart(fig_sf_fis, width="stretch", key="bar_sf_fis")
             with gtab2:
                 sf_show = sf_fis[["Sector PDD","Avance","N Metas"]].copy()
                 sf_show["Semaforo"] = sf_show["Avance"].apply(semaforo_label)
@@ -1025,7 +1008,7 @@ with tab4:
                     height=max(360,len(dep_s)*48), paper_bgcolor="white",
                     plot_bgcolor="#fafafa", font={"family":"DM Sans"},
                     margin=dict(l=20,r=100,t=30,b=20))
-                st.plotly_chart(fig_dep, use_container_width=True, key="bar_dep")
+                st.plotly_chart(fig_dep, width="stretch", key="bar_dep")
                 st.caption(
                     f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas a cargo de cada dependencia. "
                     "Metas superiores: indicadores con categoria 'Superior'. "
