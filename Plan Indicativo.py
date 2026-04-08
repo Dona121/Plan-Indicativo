@@ -388,16 +388,23 @@ def gauge(val, title, color):
 # TABLA FORMATEADA HTML
 # ------------------------------------------------------------------
 def html_table(df: pd.DataFrame, col_pct: list = None, col_money: list = None,
-               col_sem: str = None, tooltips: dict = None) -> str:
+               tooltips: dict = None) -> str:
+    """
+    Renderiza un DataFrame como tabla HTML con diseño institucional.
+    - col_pct:   columnas de porcentaje (float 0-1). Muestra pill de semaforización
+                 integrado en la misma celda junto al valor. No se necesita columna separada.
+    - col_money: columnas de valores monetarios (float). Formatea con $ y separador de miles.
+    - tooltips:  dict {nombre_columna: texto_tooltip} mostrado al pasar el cursor por el encabezado.
+    """
     col_pct   = col_pct   or []
     col_money = col_money or []
     tooltips  = tooltips  or {}
 
     def th(name):
-        tip = tooltips.get(name,"")
-        tip_attr = f' title="{tip}"' if tip else ""
-        style = ' style="cursor:help;border-bottom:1px dashed rgba(255,255,255,.5)"' if tip else ""
-        return f"<th{tip_attr}{style}>{name}</th>"
+        tip = tooltips.get(name, "")
+        tip_attr  = f' title="{tip}"' if tip else ""
+        tip_style = ' style="cursor:help;border-bottom:1px dashed rgba(255,255,255,.5)"' if tip else ""
+        return f"<th{tip_attr}{tip_style}>{name}</th>"
 
     headers = "".join(th(c) for c in df.columns)
     rows = ""
@@ -406,29 +413,29 @@ def html_table(df: pd.DataFrame, col_pct: list = None, col_money: list = None,
         for c in df.columns:
             v = row[c]
             if c in col_pct and pd.notna(v):
-                # Acepta float 0-1 (ej. 0.92) o float >1 ya multiplicado (ej. 92.0)
+                # Normaliza a escala 0-1 independientemente de si llega como 0.92 o 92.0
                 try:
-                    raw_f = float(str(v).replace("%","").strip())
-                    # Si el valor está en escala 0-1, lo dejamos; si está en 0-100, dividimos
+                    raw_f = float(str(v).replace("%", "").strip())
                     raw = raw_f if raw_f <= 1.5 else raw_f / 100.0
                 except (ValueError, TypeError):
                     raw = 0.0
                 color = semaforo_color(raw)
                 lbl   = semaforo_label(raw)
-                cells += f'<td>{pill_html(lbl,color)} &nbsp; {fmt_pct(raw)}</td>'
+                # Pill + valor en la misma celda, sin columna separada
+                cells += (f'<td style="white-space:nowrap">'
+                          f'{pill_html(lbl, color)}'
+                          f'<span style="margin-left:6px;font-size:.82rem">{fmt_pct(raw)}</span>'
+                          f'</td>')
             elif c in col_money and pd.notna(v):
                 try:
-                    cells += f'<td>${float(v):,.0f}</td>'
+                    cells += f'<td style="text-align:right">${float(v):,.0f}</td>'
                 except (ValueError, TypeError):
                     cells += f"<td>{v}</td>"
-            elif c == col_sem and pd.notna(v):
-                color = SEM_COLORS.get(str(v), C["cafe"])
-                cells += f'<td>{pill_html(str(v),color)}</td>'
             else:
                 cells += f"<td>{v if pd.notna(v) else ''}</td>"
         rows += f"<tr>{cells}</tr>"
 
-    return (f'<div style="overflow-x:auto;max-height:420px;overflow-y:auto">'
+    return (f'<div style="overflow-x:auto;max-height:440px;overflow-y:auto">'
             f'<table class="dash-table"><thead><tr>{headers}</tr></thead>'
             f'<tbody>{rows}</tbody></table></div>')
 
@@ -750,10 +757,20 @@ with tab1:
                     })
                 cat_pd = pd.DataFrame(rows_cat)
                 cat_pd = cat_pd.sort_values("Metas", ascending=False).reset_index(drop=True)
-                st.markdown(html_table(cat_pd, col_sem="Categoria",
-                    tooltips={"Categoria":f"Clasificacion segun la semaforización oficial. "
-                                           "Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
-                              "% del total programado":"Proporcion sobre las metas con programacion en la vigencia."}),
+                # Convertir la categoria a un valor "pseudo-porcentaje" para que html_table
+                # muestre el pill de semaforización correctamente.
+                # Usamos la misma logica: Superior=1.0, Alto=0.7, Medio=0.4, Minimo=0.1
+                sem_map = {"Superior": 1.0, "Alto": 0.7, "Medio": 0.4, "Minimo": 0.1}
+                cat_pd["Categoria_pct"] = cat_pd["Categoria"].map(sem_map).fillna(0.0)
+                # Renombramos para la tabla final
+                cat_display = cat_pd[["Categoria_pct", "Metas", "% del total programado"]].copy()
+                cat_display.columns = ["Categoria", "Metas", "% del total programado"]
+                st.markdown(html_table(cat_display,
+                    col_pct=["Categoria"],
+                    tooltips={
+                        "Categoria": "Semaforización oficial: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
+                        "% del total programado": "Proporcion sobre las metas con programacion en la vigencia.",
+                    }),
                     unsafe_allow_html=True)
 
 # ================================================================
@@ -863,92 +880,191 @@ with tab2:
 # TAB 3: EJECUCION FISICA
 # ================================================================
 with tab3:
-    # Lineas
+    # ── Calculo base: avance_vigencia_lineas del notebook ────────
+    # Las 4 columnas solicitadas:
+    # % Aporte Cumplimiento PDD | Nro Indicadores Programados |
+    # Sobre Nro Total Indicadores | % Eficacia Operativa
+    def calcular_avance_fisico(pf_src, group_col, n_prog_total, all_rows=False):
+        """
+        Replica avance_vigencia_lineas / avance_vigencia_sectores del notebook.
+        all_rows=False: solo metas con programacion en la vigencia (n_prog_total como denominador).
+        Retorna DataFrame pandas con las 4 columnas del notebook.
+        """
+        if n_prog_total == 0:
+            return pd.DataFrame()
+
+        # Promedio de avance por programa
+        prom_prog = (
+            pf_src.filter(pl.col(CM).fill_null(0) != 0)
+                  .group_by("Programa PDD")
+                  .agg(pl.col(CP).fill_null(0).mean().alias("prom"),
+                       pl.col("Codigo Meta").len().alias("n_p"))
+                  .with_columns((pl.col("n_p") / n_prog_total).alias("peso"))
+        )
+
+        # Agrupar por la columna solicitada (linea o sector)
+        result = (
+            pf_src.filter(pl.col(CM).fill_null(0) != 0)
+                  .group_by([group_col, "Programa PDD"])
+                  .agg(pl.col("Codigo Meta").len().alias("n_ind"))
+                  .join(prom_prog.select(["Programa PDD", "prom", "peso"]),
+                        on="Programa PDD", how="left")
+                  .with_columns(pl.col("prom").fill_null(0))
+                  .group_by(group_col)
+                  .agg(
+                      (pl.col("prom") * pl.col("peso")).sum().alias("Aporte"),
+                      pl.col("n_ind").sum().alias("N Indicadores"),
+                  )
+                  .with_columns(
+                      (pl.col("N Indicadores") / n_prog_total)
+                        .alias("Peso"),
+                  )
+                  # Eficacia Operativa: Aporte / Peso (normaliza el aporte al peso de la linea)
+                  .with_columns(
+                      pl.when(pl.col("Peso") == 0)
+                        .then(0.0)
+                        .otherwise(pl.col("Aporte") / pl.col("Peso"))
+                        .alias("Eficacia Operativa"),
+                  )
+                  .sort("Eficacia Operativa", descending=False)
+                  .to_pandas()
+        )
+        result.columns = [group_col,
+                          "% Aporte Cumplimiento PDD",
+                          "Nro Indicadores Programados",
+                          "Sobre Nro Total de Indicadores",
+                          "% Eficacia Operativa"]
+        return result
+
+    # ── Lineas ───────────────────────────────────────────────────
     sec(f"Eficacia Operativa por Linea Estrategica - {vig}")
     if CP in pf.columns and cL in pf.columns and CM in pf.columns and n_prog > 0:
-        pv_lin2 = (
-            pf.filter(pl.col(CM).fill_null(0)!=0)
-              .group_by(cL)
-              .agg(pl.col(CP).fill_null(0).mean().alias("Avance"),
-                   pl.col("Codigo Meta").len().alias("N Metas"))
-              .to_pandas().sort_values("Avance",ascending=True)
-        )
-        gtab1, gtab2 = st.tabs(["Grafico","Tabla"])
-        with gtab1:
-            fig_fl = go.Figure(go.Bar(
-                x=pv_lin2["Avance"]*100, y=pv_lin2[cL], orientation="h",
-                marker_color=[semaforo_color(v) for v in pv_lin2["Avance"]],
-                text=[fmt_pct(v) for v in pv_lin2["Avance"]], textposition="outside",
-                customdata=pv_lin2[["N Metas"]].values,
-                hovertemplate="<b>%{y}</b><br>Avance: %{x:.1f}%<br>Metas programadas: %{customdata[0]}<extra></extra>",
-            ))
-            fig_fl.update_layout(xaxis_title="% Promedio Ejecucion Fisica",
-                height=max(320,len(pv_lin2)*48), paper_bgcolor="white",
-                plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                margin=dict(l=20,r=100,t=30,b=20))
-            st.plotly_chart(fig_fl, width="stretch", key="bar_fl")
-            st.caption(f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas con Meta Fisica Esperada > 0.")
-        with gtab2:
-            pv_show = pv_lin2[[cL,"Avance","N Metas"]].copy()
-            pv_show["Semaforo"] = pv_show["Avance"].apply(semaforo_label)
-            pv_show["Avance"]   = pv_show["Avance"].apply(fmt_pct)
-            pv_show.columns     = ["Linea Estrategica","% Avance","Metas Prog.","Semaforo"]
-            st.markdown(html_table(pv_show, col_pct=["% Avance"], col_sem="Semaforo",
-                tooltips={"% Avance":f"Promedio de PORCENTAJE DE EJECUCION {vig} de metas con programacion.",
-                          "Semaforo":"Semaforización oficial: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%"}),
-                unsafe_allow_html=True)
-    else:
-        st.info("No hay columnas de ejecucion fisica para esta vigencia.")
+        df_lin = calcular_avance_fisico(pf, cL, n_prog)
 
-    # Sectores
-    sec(f"Ejecucion Fisica por Sector PDD - {vig}")
-    if CP in pf.columns and "Sector PDD" in pf.columns and CM in pf.columns:
-        sf_fis = (pf.filter(pl.col(CM).fill_null(0)!=0)
-                    .group_by("Sector PDD")
-                    .agg(pl.col(CP).fill_null(0).mean().alias("Avance"),
-                         pl.col("Codigo Meta").len().alias("N Metas"))
-                    .to_pandas().sort_values("Avance",ascending=True))
-        if not sf_fis.empty:
-            gtab1, gtab2 = st.tabs(["Grafico","Tabla"])
+        if not df_lin.empty:
+            gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
             with gtab1:
-                fig_sf_fis = go.Figure(go.Bar(
-                    x=sf_fis["Avance"]*100, y=sf_fis["Sector PDD"], orientation="h",
-                    marker_color=[semaforo_color(v) for v in sf_fis["Avance"]],
-                    text=[fmt_pct(v) for v in sf_fis["Avance"]], textposition="outside",
-                    customdata=sf_fis[["N Metas"]].values,
-                    hovertemplate="<b>%{y}</b><br>Avance: %{x:.1f}%<br>Metas: %{customdata[0]}<extra></extra>",
+                fig_fl = go.Figure(go.Bar(
+                    x=df_lin["% Eficacia Operativa"] * 100,
+                    y=df_lin[cL],
+                    orientation="h",
+                    marker_color=[semaforo_color(v) for v in df_lin["% Eficacia Operativa"]],
+                    text=[fmt_pct(v) for v in df_lin["% Eficacia Operativa"]],
+                    textposition="outside",
+                    customdata=df_lin[["Nro Indicadores Programados",
+                                       "% Aporte Cumplimiento PDD"]].values,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Eficacia Operativa: %{text}<br>"
+                        "Indicadores programados: %{customdata[0]}<br>"
+                        "Aporte al cumplimiento PDD: %{customdata[1]:.1%}<extra></extra>"
+                    ),
                 ))
-                fig_sf_fis.update_layout(xaxis_title="% Promedio Ejecucion Fisica",
-                    height=max(320,len(sf_fis)*48), paper_bgcolor="white",
-                    plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                    margin=dict(l=20,r=100,t=30,b=20))
-                st.plotly_chart(fig_sf_fis, width="stretch", key="bar_sf_fis")
+                fig_fl.update_layout(
+                    xaxis_title="% Eficacia Operativa",
+                    height=max(320, len(df_lin) * 50),
+                    paper_bgcolor="white", plot_bgcolor="#fafafa",
+                    font={"family": "DM Sans"},
+                    margin=dict(l=20, r=100, t=30, b=20),
+                )
+                st.plotly_chart(fig_fl, width="stretch", key="bar_fl")
+                st.caption(
+                    f"Eficacia Operativa: que tan bien ejecuto la linea sus metas programadas "
+                    f"en {vig}, ajustado por el peso de cada programa sobre el total de metas programadas."
+                )
             with gtab2:
-                sf_show = sf_fis[["Sector PDD","Avance","N Metas"]].copy()
-                sf_show["Semaforo"] = sf_show["Avance"].apply(semaforo_label)
-                sf_show["Avance"]   = sf_show["Avance"].apply(fmt_pct)
-                sf_show.columns     = ["Sector PDD","% Avance","Metas Prog.","Semaforo"]
-                st.markdown(html_table(sf_show, col_pct=["% Avance"], col_sem="Semaforo"),
-                    unsafe_allow_html=True)
+                df_lin_show = df_lin.copy()
+                df_lin_show = df_lin_show.sort_values("% Eficacia Operativa", ascending=False)
+                st.markdown(html_table(
+                    df_lin_show,
+                    col_pct=["% Aporte Cumplimiento PDD",
+                              "Sobre Nro Total de Indicadores",
+                              "% Eficacia Operativa"],
+                    tooltips={
+                        "% Aporte Cumplimiento PDD":
+                            "Suma ponderada del avance de cada programa, "
+                            "usando como peso la proporcion de sus metas programadas sobre el total de la vigencia.",
+                        "Nro Indicadores Programados":
+                            f"Cantidad de indicadores con Meta Fisica Esperada > 0 en {vig}.",
+                        "Sobre Nro Total de Indicadores":
+                            "Nro Indicadores Programados / Total de metas programadas en la vigencia. "
+                            "Indica el peso relativo de esta linea.",
+                        "% Eficacia Operativa":
+                            "% Aporte Cumplimiento PDD / Sobre Nro Total de Indicadores. "
+                            "Mide que tan bien ejecuto la linea sus metas respecto a su peso.",
+                    }
+                ), unsafe_allow_html=True)
+    else:
+        st.info("No hay columnas de ejecucion fisica disponibles para esta vigencia.")
+
+    # ── Sectores ─────────────────────────────────────────────────
+    sec(f"Eficacia Operativa por Sector PDD - {vig}")
+    if CP in pf.columns and "Sector PDD" in pf.columns and CM in pf.columns and n_prog > 0:
+        df_sec = calcular_avance_fisico(pf, "Sector PDD", n_prog)
+
+        if not df_sec.empty:
+            gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
+            with gtab1:
+                fig_sf = go.Figure(go.Bar(
+                    x=df_sec["% Eficacia Operativa"] * 100,
+                    y=df_sec["Sector PDD"],
+                    orientation="h",
+                    marker_color=[semaforo_color(v) for v in df_sec["% Eficacia Operativa"]],
+                    text=[fmt_pct(v) for v in df_sec["% Eficacia Operativa"]],
+                    textposition="outside",
+                    customdata=df_sec[["Nro Indicadores Programados",
+                                       "% Aporte Cumplimiento PDD"]].values,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Eficacia Operativa: %{text}<br>"
+                        "Indicadores programados: %{customdata[0]}<br>"
+                        "Aporte al cumplimiento PDD: %{customdata[1]:.1%}<extra></extra>"
+                    ),
+                ))
+                fig_sf.update_layout(
+                    xaxis_title="% Eficacia Operativa",
+                    height=max(320, len(df_sec) * 50),
+                    paper_bgcolor="white", plot_bgcolor="#fafafa",
+                    font={"family": "DM Sans"},
+                    margin=dict(l=20, r=100, t=30, b=20),
+                )
+                st.plotly_chart(fig_sf, width="stretch", key="bar_sf_fis")
+            with gtab2:
+                df_sec_show = df_sec.copy()
+                df_sec_show = df_sec_show.sort_values("% Eficacia Operativa", ascending=False)
+                st.markdown(html_table(
+                    df_sec_show,
+                    col_pct=["% Aporte Cumplimiento PDD",
+                              "Sobre Nro Total de Indicadores",
+                              "% Eficacia Operativa"],
+                    tooltips={
+                        "% Aporte Cumplimiento PDD":
+                            "Suma ponderada del avance de los programas del sector, "
+                            "usando como peso la proporcion de sus metas programadas.",
+                        "Nro Indicadores Programados":
+                            f"Indicadores del sector con Meta Fisica Esperada > 0 en {vig}.",
+                        "Sobre Nro Total de Indicadores":
+                            "Peso relativo del sector sobre el total de metas programadas en la vigencia.",
+                        "% Eficacia Operativa":
+                            "% Aporte / Sobre Nro Total de Indicadores. "
+                            "Normaliza el cumplimiento por el peso del sector.",
+                    }
+                ), unsafe_allow_html=True)
 
     # Tabla completa de metas
     sec("Detalle de Metas PDD")
-    dcols = [c for c in ["Codigo Meta",cL,"Sector PDD","Programa PDD","Responsable",
-                          CM,CP,CCA,COL_PCT_ACUM] if c in pf.columns]
+    dcols = [c for c in ["Codigo Meta", cL, "Sector PDD", "Programa PDD", "Responsable",
+                          CM, CP, COL_PCT_ACUM] if c in pf.columns]
     tbl = pf.select(dcols).to_pandas()
     for pc in [CP, COL_PCT_ACUM]:
         if pc in tbl.columns:
             tbl[pc] = tbl[pc].fillna(0)
-    tbl_show = tbl.copy()
-    # Asegurar que la columna de categoria existe antes de usarla en html_table
-    col_sem_det = CCA if CCA in tbl_show.columns else None
-    st.markdown(html_table(tbl_show,
-        col_pct=[CP, COL_PCT_ACUM] if COL_PCT_ACUM in tbl_show.columns else [CP],
-        col_sem=col_sem_det,
+    st.markdown(html_table(tbl,
+        col_pct=[CP, COL_PCT_ACUM] if COL_PCT_ACUM in tbl.columns else [CP],
         tooltips={
-            CP: f"PORCENTAJE DE EJECUCION {vig} del indicador (0.92 = 92%).",
+            CP: f"PORCENTAJE DE EJECUCION {vig} del indicador (0.92 = 92%). "
+                "El pill muestra la semaforización institucional.",
             COL_PCT_ACUM: "Avance acumulado frente a la meta total del cuatrienio 2024-2027.",
-            CCA: f"Semaforización: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
             CM: f"Meta Fisica Esperada en {vig} para este indicador.",
         }),
         unsafe_allow_html=True)
@@ -986,7 +1102,6 @@ with tab4:
         else:
             dep_pd["Avance"]     = dep_pd["Avance"].fillna(0)
             dep_pd["Ejec_Acum"]  = dep_pd["Ejec_Acum"].fillna(0)
-            dep_pd["Semaforo"]   = dep_pd["Avance"].apply(semaforo_label)
             name_c = "Dependencia Responsable" if "Dependencia Responsable" in dep_pd.columns else "Responsable"
             dep_s  = dep_pd.sort_values("Avance",ascending=True)
 
@@ -1015,18 +1130,17 @@ with tab4:
                     "Avance acumulado: promedio del PORCENTAJE DE EJECUCION ACUMULADA (2024-2027)."
                 )
             with gtab2:
-                tbl_dep = dep_pd[[name_c,"N Metas","N Superiores","Avance","Ejec_Acum","Semaforo"]].copy()
-                tbl_dep.columns = ["Dependencia","Metas Prog.","Metas Superiores",
-                                    f"% Avance {vig}","% Avance Acumulado","Semaforo"]
-                # Dejar como float 0-1 para que html_table aplique la semaforización correctamente
+                tbl_dep = dep_pd[[name_c, "N Metas", "N Superiores", "Avance", "Ejec_Acum"]].copy()
+                tbl_dep.columns = ["Dependencia", "Metas Prog.", "Metas Superiores",
+                                    f"% Avance {vig}", "% Avance Acumulado"]
                 tbl_dep = tbl_dep.sort_values(f"% Avance {vig}", ascending=False).reset_index(drop=True)
                 st.markdown(html_table(tbl_dep,
-                    col_pct=[f"% Avance {vig}","% Avance Acumulado"],
-                    col_sem="Semaforo",
+                    col_pct=[f"% Avance {vig}", "% Avance Acumulado"],
                     tooltips={
-                        f"% Avance {vig}":f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas.",
-                        "% Avance Acumulado":"Promedio del PORCENTAJE DE EJECUCION ACUMULADA (cuatrienio completo).",
-                        "Metas Superiores":f"Metas con CATEGORIA DE EJECUCION FISICA {vig} igual a 'Superior'.",
+                        f"% Avance {vig}": f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas. "
+                                            "El pill muestra la semaforización institucional.",
+                        "% Avance Acumulado": "Promedio del PORCENTAJE DE EJECUCION ACUMULADA (cuatrienio completo).",
+                        "Metas Superiores": f"Metas con CATEGORIA DE EJECUCION FISICA {vig} igual a 'Superior'.",
                     }),
                     unsafe_allow_html=True)
 
