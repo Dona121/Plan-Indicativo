@@ -1,86 +1,80 @@
 """
 Dashboard de Reporte de Avance PDD - Plan Indicativo 2024-2027
+Basado fielmente en el notebook ReporteAvance.ipynb
 """
 
 import streamlit as st
 import polars as pl
 import pandas as pd
 import plotly.graph_objects as go
-import io
-import requests
+import io, requests
 from typing import Optional
 
-# ------------------------------------------------------------------
-# PALETA CORPORATIVA
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+# PALETA CORPORATIVA Y SEMAFORIZACIÓN OFICIAL
+# 0-29% Mínimo | 30-59% Medio | 60-99% Alto | ≥100% Superior
+# ──────────────────────────────────────────────────────────────────
 C = {
-    "verde":    "#17743d",
-    "cyan":     "#47b1d5",
-    "azul":     "#1754ab",
-    "azul_osc": "#003d6c",
-    "naranja":  "#d88c16",
-    "cafe":     "#9b5b1e",
-    "salmon":   "#e68878",
-    "gris":     "#2d3142",
+    "verde":    "#17743d", "cyan":    "#47b1d5",
+    "azul":     "#1754ab", "azul_osc":"#003d6c",
+    "naranja":  "#d88c16", "cafe":    "#9b5b1e",
+    "salmon":   "#e68878", "gris":    "#2d3142",
 }
 
-# Semaforización oficial de la institución
-# 0-29% Mínimo | 30-59% Medio | 60-99% Alto | >=100% Superior
-def semaforo_color(v: float) -> str:
+def sem_color(v):
     if v is None: return C["cafe"]
     if v >= 1.0:  return C["verde"]
     if v >= 0.6:  return C["cyan"]
     if v >= 0.3:  return C["naranja"]
     return C["salmon"]
 
-def semaforo_label(v: float) -> str:
+def sem_label(v):
     if v is None: return "Sin dato"
     if v >= 1.0:  return "Superior"
     if v >= 0.6:  return "Alto"
     if v >= 0.3:  return "Medio"
     return "Minimo"
 
-SEM_COLORS = {
-    "Superior": C["verde"],
-    "Alto":     C["cyan"],
-    "Medio":    C["naranja"],
-    "Minimo":   C["salmon"],
+VIGENCIAS = ["2024","2025","2026"]
+
+# ──────────────────────────────────────────────────────────────────
+# URLs GITHUB - todos los archivos fijos
+# ──────────────────────────────────────────────────────────────────
+GH = {
+    "pi":  "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/Plan%20Indicativo%202024-2027.xlsx",
+    "h24": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20A%20DICIEMBRE%2031%20DEL%202024%20ENERO%2010%202025.xlsx",
+    "r24": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/INFORME%20FINANCIERO%20REGALIAS%20A%2031%20DE%20DICIEMBRE%20DE%202024.xlsx",
+    "h25": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20ENERO%20A%20DICIEMBRE%202025.xlsx",
+    "r25": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/PAGOS%20REGALIAS%20ENERO%20-%20DICIEMBRE%202025.xlsx",
+    "h26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20HACIENDA%20PRUEBA%202026.xlsx",
+    "r26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/CG-cttos_04_marzo_20260304.xlsx",
 }
 
-VIGENCIAS = ["2024", "2025", "2026"]
+# ──────────────────────────────────────────────────────────────────
+# NOMBRES DE COLUMNA EXACTOS (con tildes, del notebook)
+# ──────────────────────────────────────────────────────────────────
+CL   = "L\u00ednea Estrat\u00e9gica"          # Línea Estratégica
+CPAC = "PORCENTAJE DE EJECUCI\u00d3N ACUMULADA"
+CCLA = "CLASIFICACI\u00d3N RECURSOS"
 
-# ------------------------------------------------------------------
-# URLs FIJAS GitHub (vigencias cerradas 2024-2025)
-# ------------------------------------------------------------------
-GITHUB_H24 = "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20A%20DICIEMBRE%2031%20DEL%202024%20ENERO%2010%202025.xlsx"
-GITHUB_R24 = "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/INFORME%20FINANCIERO%20REGALIAS%20A%2031%20DE%20DICIEMBRE%20DE%202024.xlsx"
-GITHUB_H25 = "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20ENERO%20A%20DICIEMBRE%202025.xlsx"
-GITHUB_R25 = "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/PAGOS%20REGALIAS%20ENERO%20-%20DICIEMBRE%202025.xlsx"
+def cMeta(y): return f"Meta F\u00edsica Esperada {y}"
+def cPct(y):  return f"PORCENTAJE DE EJECUCI\u00d3N {y}"
+def cCat(y):  return f"CATEGOR\u00cdA DE EJECUCI\u00d3N F\u00cdSICA {y}"
+def cPF(y):   return f"Programaci\u00f3n Financiera {y}"
+def cEF(y):   return f"Ejecuci\u00f3n Financiera {y}"
 
-# ------------------------------------------------------------------
-# NOMBRES DE COLUMNA EXACTOS (del notebook, con tildes reales)
-# ------------------------------------------------------------------
-COL_LINEA    = "L\u00ednea Estrat\u00e9gica"           # Línea Estratégica
-COL_PCT_ACUM = "PORCENTAJE DE EJECUCI\u00d3N ACUMULADA"
-COL_CLASIF   = "CLASIFICACI\u00d3N RECURSOS"
-
-def col_meta(y):  return f"Meta F\u00edsica Esperada {y}"
-def col_pct(y):   return f"PORCENTAJE DE EJECUCI\u00d3N {y}"
-def col_cat(y):   return f"CATEGOR\u00cdA DE EJECUCI\u00d3N F\u00cdSICA {y}"
-def col_pf(y):    return f"Programaci\u00f3n Financiera {y}"
-def col_ef(y):    return f"Ejecuci\u00f3n Financiera {y}"
-
-COLS_PI_REAL = [
-    "Codigo Meta", COL_LINEA, "Sector PDD", "Numero Programa PDD", "Programa PDD",
+COLS_PI = [
+    "Codigo Meta", CL, "Sector PDD", "Numero Programa PDD", "Programa PDD",
     "Meta de cuatrenio", "Tipo de Acumulaci\u00f3n", "Responsable",
-    col_meta("2024"), col_meta("2025"), col_meta("2026"), col_meta("2027"),
+    cMeta("2024"), cMeta("2025"), cMeta("2026"), cMeta("2027"),
     "PROYECTOS 2024","PROYECTOS 2025","PROYECTOS/GESTIONES PROGRAMADAS 2026","PROYECTOS 2026","PROYECTOS 2027",
-    "EJECUCI\u00d3N 2024", col_pct("2024"), col_cat("2024"),
-    "EJECUCI\u00d3N 2025", col_pct("2025"), col_cat("2025"),
-    "EJECUCI\u00d3N 2026", col_pct("2026"), col_cat("2026"),
-    "EJECUCI\u00d3N ACUMULADA", COL_PCT_ACUM, "CATEGOR\u00cdA DE EJECUCI\u00d3N ACUMULADA",
+    "EJECUCI\u00d3N 2024", cPct("2024"), cCat("2024"),
+    "EJECUCI\u00d3N 2025", cPct("2025"), cCat("2025"),
+    "EJECUCI\u00d3N 2026", cPct("2026"), cCat("2026"),
+    "EJECUCI\u00d3N ACUMULADA", CPAC, "CATEGOR\u00cdA DE EJECUCI\u00d3N ACUMULADA",
 ]
 
+# programación ... con tildes, en lowercase
 PROG_COLS = {s: [
     f"programaci\u00f3n recursos propios icld{s}",
     f"programaci\u00f3n recursos propios icde{s}",
@@ -94,71 +88,25 @@ PROG_COLS = {s: [
     f"programaci\u00f3n otras fuentes{s}",
 ] for s in ["24","25","26","27"]}
 
-SCHEMAS = {
-    "Plan Indicativo": {
-        "table": "tblPlanIndicativo_2",
-        "cols": [
-            {"col":"Codigo Meta","tipo":"Texto","ejemplo":"MT-ED-0001"},
-            {"col":"L\u00ednea Estrat\u00e9gica","tipo":"Texto","ejemplo":"Linea 1 - Bienestar y Equidad Social"},
-            {"col":"Sector PDD","tipo":"Texto","ejemplo":"Educacion"},
-            {"col":"Programa PDD","tipo":"Texto","ejemplo":"1.1 Educacion con calidad e incluyente"},
-            {"col":"Meta de cuatrenio","tipo":"Numero","ejemplo":"10000"},
-            {"col":"Meta F\u00edsica Esperada 2026","tipo":"Numero","ejemplo":"2500"},
-            {"col":"EJECUCI\u00d3N 2026","tipo":"Numero","ejemplo":"2300"},
-            {"col":"PORCENTAJE DE EJECUCI\u00d3N 2026","tipo":"Decimal","ejemplo":"0.92 (representa 92%)"},
-            {"col":"CATEGOR\u00cdA DE EJECUCI\u00d3N F\u00cdSICA 2026","tipo":"Texto","ejemplo":"Superior | Alto | Medio | Minimo"},
-            {"col":"PORCENTAJE DE EJECUCI\u00d3N ACUMULADA","tipo":"Decimal","ejemplo":"0.46"},
-            {"col":"Programaci\u00f3n recursos propios icld26","tipo":"Numero","ejemplo":"500000000"},
-            {"col":"Programaci\u00f3n regal\u00edas26","tipo":"Numero","ejemplo":"200000000"},
-        ],
-    },
-    "Hacienda 2026": {
-        "table": "EjecucionHacienda2026",
-        "cols": [
-            {"col":"RP","tipo":"Numero","ejemplo":"120000000"},
-            {"col":"CODIGO META","tipo":"Texto","ejemplo":"MT-ED-0001"},
-            {"col":"CLASIFICACI\u00d3N RECURSOS","tipo":"Texto","ejemplo":"ICLD | SGP EDUCACION"},
-            {"col":"PROYECTO ARCHIVADO","tipo":"Texto","ejemplo":"(vacio = activo)"},
-            {"col":"SE VA A CARGAR EN PI","tipo":"Texto","ejemplo":"(vacio = aplica)"},
-            {"col":"DISTRIBUIR DE FORMA EQUITATIVA","tipo":"Texto","ejemplo":"SI | NO"},
-        ],
-    },
-    "Regalias 2026": {
-        "table": "Pagos_Regalias_2026",
-        "cols": [
-            {"col":"PAGO EJECUTADO VALOR","tipo":"Numero","ejemplo":"75000000"},
-            {"col":"CODIGO META","tipo":"Texto","ejemplo":"MT-ED-0001"},
-            {"col":"CLASIFICACI\u00d3N RECURSOS","tipo":"Texto","ejemplo":"REGALIAS"},
-            {"col":"ULTIMA FECHA PAGO","tipo":"Fecha","ejemplo":"2026-03-04"},
-        ],
-    },
-}
-
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 # PAGE CONFIG
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Dashboard PDD", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Sans:wght@400;500&display=swap');
-
 html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;color:{C['gris']};}}
 
-.main-header{{
-  background:linear-gradient(135deg,{C['azul_osc']} 0%,{C['azul']} 60%,{C['cyan']} 100%);
-  padding:2.2rem 3rem 1.8rem;border-radius:0 0 2rem 2rem;
-  margin:-1rem -1rem 2rem -1rem;color:white;
-}}
-.main-header h1{{font-family:'Sora',sans-serif;font-weight:700;font-size:2rem;margin:0;letter-spacing:-0.5px;}}
-.main-header p{{margin:.35rem 0 0;font-size:.9rem;opacity:.82;}}
+.main-header{{background:linear-gradient(135deg,{C['azul_osc']} 0%,{C['azul']} 60%,{C['cyan']} 100%);
+  padding:2.2rem 3rem 1.8rem;border-radius:0 0 2rem 2rem;margin:-1rem -1rem 2rem -1rem;color:white;}}
+.main-header h1{{font-family:'Sora',sans-serif;font-weight:700;font-size:2rem;margin:0;letter-spacing:-.5px;}}
+.main-header p{{margin:.3rem 0 0;font-size:.9rem;opacity:.82;}}
 
-.kpi-card{{background:white;border-radius:.9rem;padding:1.2rem 1.5rem;
-  box-shadow:0 2px 12px rgba(0,0,0,.07);border-left:5px solid {C['azul']};margin-bottom:.8rem;}}
-.kpi-card.v{{border-left-color:{C['verde']};}}
-.kpi-card.c{{border-left-color:{C['cyan']};}}
-.kpi-card.n{{border-left-color:{C['naranja']};}}
-.kpi-card.ca{{border-left-color:{C['cafe']};}}
+.kpi-card{{background:white;border-radius:.9rem;padding:1.2rem 1.5rem;box-shadow:0 2px 12px rgba(0,0,0,.07);
+  border-left:5px solid {C['azul']};margin-bottom:.8rem;}}
+.kpi-card.v{{border-left-color:{C['verde']};}} .kpi-card.c{{border-left-color:{C['cyan']};}}
+.kpi-card.n{{border-left-color:{C['naranja']};}} .kpi-card.ca{{border-left-color:{C['cafe']};}}
 .kpi-value{{font-family:'Sora',sans-serif;font-size:2rem;font-weight:700;line-height:1.1;}}
 .kpi-label{{font-size:.78rem;text-transform:uppercase;letter-spacing:.8px;color:#6b7280;margin-top:.25rem;}}
 .kpi-tip{{font-size:.72rem;color:#9ca3af;margin-top:.45rem;border-top:1px solid #f3f4f6;padding-top:.4rem;}}
@@ -166,11 +114,22 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;color:{C['gris']};}}
 .sec-title{{font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:600;color:{C['azul_osc']};
   border-bottom:2px solid {C['cyan']};padding-bottom:.35rem;margin:1.8rem 0 .9rem;}}
 
+/* Sidebar: fondo oscuro con texto visible */
 section[data-testid="stSidebar"]{{background:{C['azul_osc']};}}
-section[data-testid="stSidebar"] *{{color:white!important;}}
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3,
+section[data-testid="stSidebar"] .stMarkdown h4{{color:white!important;}}
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3{{color:{C['cyan']}!important;font-family:'Sora',sans-serif;}}
-section[data-testid="stSidebar"] label{{color:#cbd5e1!important;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;}}
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stMultiSelect label,
+section[data-testid="stSidebar"] .stRadio label,
+section[data-testid="stSidebar"] .stRadio div{{color:#cbd5e1!important;font-size:.8rem;}}
+section[data-testid="stSidebar"] .stSelectbox > div > div,
+section[data-testid="stSidebar"] .stMultiSelect > div > div{{background:#1e3a5f;border-color:#2d5a8e;color:white;}}
 
 .err-box{{background:#fff7f0;border:1.5px solid {C['salmon']};border-radius:.8rem;padding:1.1rem 1.4rem;margin:.9rem 0;}}
 .err-box h4{{color:#c0392b;margin:0 0 .5rem;font-family:'Sora',sans-serif;}}
@@ -179,31 +138,37 @@ section[data-testid="stSidebar"] label{{color:#cbd5e1!important;font-size:.8rem;
 .sch-tbl td{{padding:.35rem .75rem;border-bottom:1px solid #e5e7eb;}}
 .sch-tbl tr:nth-child(even) td{{background:#f9fafb;}}
 
-/* Tabla formateada */
-.dash-table{{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.5rem;}}
-.dash-table thead th{{background:{C['azul_osc']};color:white;padding:.5rem .9rem;
-  text-align:left;font-family:'Sora',sans-serif;font-size:.78rem;letter-spacing:.3px;
-  position:sticky;top:0;}}
+.dash-table{{width:100%;border-collapse:collapse;font-size:.82rem;}}
+.dash-table thead th{{background:{C['azul_osc']};color:white;padding:.5rem .9rem;text-align:left;
+  font-family:'Sora',sans-serif;font-size:.78rem;position:sticky;top:0;z-index:1;cursor:help;}}
 .dash-table tbody tr:hover td{{background:#f0f7ff;}}
 .dash-table td{{padding:.45rem .9rem;border-bottom:1px solid #e5e7eb;vertical-align:middle;}}
 .dash-table tbody tr:nth-child(even) td{{background:#f9fafb;}}
-.pill{{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.74rem;font-weight:600;}}
+.pill{{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.73rem;font-weight:600;white-space:nowrap;}}
 
 .upload-zone{{background:#f8fafc;border:2px dashed {C['cyan']};border-radius:1rem;
   padding:1.4rem;margin:.5rem 0 1rem;text-align:center;color:#6b7280;}}
 hr.sep{{border:none;border-top:1px solid #e5e7eb;margin:1.4rem 0;}}
-.footer{{text-align:center;font-size:.75rem;color:#9ca3af;margin-top:2.5rem;
-  padding-top:.8rem;border-top:1px solid #e5e7eb;}}
+.footer{{text-align:center;font-size:.75rem;color:#9ca3af;margin-top:2.5rem;padding-top:.8rem;border-top:1px solid #e5e7eb;}}
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
-# HELPERS
-# ------------------------------------------------------------------
-def fmt_pct(v):
-    return "N/A" if v is None else f"{v*100:.1f}%"
+# ──────────────────────────────────────────────────────────────────
+# HELPERS UI
+# ──────────────────────────────────────────────────────────────────
+def fmt_pct(v): return "N/A" if v is None else f"{v*100:.1f}%"
+def fmt_cop(v):
+    try:
+        f = float(v)
+        if abs(f) >= 1e9: return f"${f/1e9:.1f}B"
+        if abs(f) >= 1e6: return f"${f/1e6:.1f}M"
+        return f"${f:,.0f}"
+    except: return str(v)
 
-def kpi(label, value, cls="", tip=""):
+def pill(lbl, color):
+    return f'<span class="pill" style="background:{color}22;color:{color};border:1px solid {color}">{lbl}</span>'
+
+def kpi_card(label, value, cls="", tip=""):
     t = f'<div class="kpi-tip">Como se calcula: {tip}</div>' if tip else ""
     st.markdown(f'<div class="kpi-card {cls}"><div class="kpi-value">{value}</div>'
                 f'<div class="kpi-label">{label}</div>{t}</div>', unsafe_allow_html=True)
@@ -211,29 +176,91 @@ def kpi(label, value, cls="", tip=""):
 def sec(text):
     st.markdown(f'<div class="sec-title">{text}</div>', unsafe_allow_html=True)
 
-def pill_html(label, color):
-    return (f'<span class="pill" style="background:{color}22;color:{color};'
-            f'border:1px solid {color}">{label}</span>')
+def htable(df: pd.DataFrame, col_pct=None, col_money=None, tooltips=None):
+    """
+    Tabla HTML con semaforización integrada en columnas de porcentaje.
+    col_pct: columnas float 0-1 → pill+valor en misma celda.
+    col_money: columnas numéricas → formato $ millones.
+    tooltips: dict {col: texto} → aparece al hacer hover sobre el encabezado.
+    """
+    col_pct   = col_pct   or []
+    col_money = col_money or []
+    tooltips  = tooltips  or {}
 
-def show_schema_error(name, schema, table=""):
-    tnote = (f'<p style="margin:0 0 .5rem;font-size:.83rem"><b>Tabla Excel esperada:</b> '
-             f'<code>{table}</code></p>') if table else ""
-    rows = "".join(f"<tr><td><code>{r['col']}</code></td><td>{r['tipo']}</td>"
-                   f"<td>{r['ejemplo']}</td></tr>" for r in schema)
+    ths = ""
+    for c in df.columns:
+        tip = tooltips.get(c, "")
+        ths += f'<th title="{tip}">{c}</th>'
+
+    rows = ""
+    for _, row in df.iterrows():
+        cells = ""
+        for c in df.columns:
+            v = row[c]
+            if c in col_pct and pd.notna(v):
+                try:
+                    raw = float(v)
+                    if raw > 1.5: raw /= 100.0
+                except: raw = 0.0
+                clr = sem_color(raw); lbl = sem_label(raw)
+                cells += (f'<td style="white-space:nowrap">{pill(lbl,clr)}'
+                          f'<span style="margin-left:6px">{fmt_pct(raw)}</span></td>')
+            elif c in col_money and pd.notna(v):
+                try: cells += f'<td style="text-align:right">{fmt_cop(float(v))}</td>'
+                except: cells += f"<td>{v}</td>"
+            else:
+                cells += f"<td>{v if pd.notna(v) else ''}</td>"
+        rows += f"<tr>{cells}</tr>"
+
+    return (f'<div style="overflow-x:auto;max-height:450px;overflow-y:auto">'
+            f'<table class="dash-table"><thead><tr>{ths}</tr></thead>'
+            f'<tbody>{rows}</tbody></table></div>')
+
+def show_err(name, schema, table=""):
+    tnote = f'<p style="margin:0 0 .5rem;font-size:.83rem"><b>Tabla Excel:</b> <code>{table}</code></p>' if table else ""
+    rows  = "".join(f"<tr><td><code>{r['col']}</code></td><td>{r['tipo']}</td><td>{r['ej']}</td></tr>" for r in schema)
     st.markdown(f"""<div class="err-box"><h4>Error al leer {name}</h4>
     <p>Verifica que el archivo contenga estas columnas:</p>{tnote}
-    <table class="sch-tbl"><thead><tr><th>Columna</th><th>Tipo</th><th>Ejemplo real</th></tr></thead>
+    <table class="sch-tbl"><thead><tr><th>Columna</th><th>Tipo</th><th>Ejemplo</th></tr></thead>
     <tbody>{rows}</tbody></table>
-    <p style="margin-top:.7rem;font-size:.79rem;color:#6b7280"><b>Tip:</b> El archivo debe
-    contener una tabla Excel (Insert &gt; Table) con el nombre indicado. Las tildes y mayusculas
-    deben coincidir exactamente.</p></div>""", unsafe_allow_html=True)
+    <p style="margin-top:.7rem;font-size:.79rem;color:#6b7280"><b>Tip:</b>
+    El archivo debe tener una tabla Excel nombrada exactamente como se indica. Las tildes importan.</p>
+    </div>""", unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
+SCHEMAS = {
+    "Plan Indicativo": ("tblPlanIndicativo_2", [
+        {"col":"Codigo Meta","tipo":"Texto","ej":"MT-ED-0001"},
+        {"col":"L\u00ednea Estrat\u00e9gica","tipo":"Texto","ej":"Linea 1 - Bienestar"},
+        {"col":"Sector PDD","tipo":"Texto","ej":"Educacion"},
+        {"col":"Programa PDD","tipo":"Texto","ej":"1.1 Educacion con calidad"},
+        {"col":"Meta F\u00edsica Esperada 2026","tipo":"Numero","ej":"2500"},
+        {"col":"PORCENTAJE DE EJECUCI\u00d3N 2026","tipo":"Decimal","ej":"0.92"},
+        {"col":"CATEGOR\u00cdA DE EJECUCI\u00d3N F\u00cdSICA 2026","tipo":"Texto","ej":"Superior|Alto|Medio|Minimo"},
+        {"col":"Programaci\u00f3n recursos propios icld26","tipo":"Numero","ej":"500000000"},
+        {"col":"Programaci\u00f3n regal\u00edas26","tipo":"Numero","ej":"200000000"},
+    ]),
+    "Hacienda 2026": ("EjecucionHacienda2026", [
+        {"col":"RP","tipo":"Numero","ej":"120000000"},
+        {"col":"CODIGO META","tipo":"Texto","ej":"MT-ED-0001"},
+        {"col":"CLASIFICACI\u00d3N RECURSOS","tipo":"Texto","ej":"ICLD"},
+        {"col":"PROYECTO ARCHIVADO","tipo":"Texto","ej":"(vacio=activo)"},
+        {"col":"SE VA A CARGAR EN PI","tipo":"Texto","ej":"(vacio=aplica)"},
+        {"col":"DISTRIBUIR DE FORMA EQUITATIVA","tipo":"Texto","ej":"SI|NO"},
+    ]),
+    "Regalias 2026": ("Pagos_Regalias_2026", [
+        {"col":"PAGO EJECUTADO VALOR","tipo":"Numero","ej":"75000000"},
+        {"col":"CODIGO META","tipo":"Texto","ej":"MT-ED-0001"},
+        {"col":"CLASIFICACI\u00d3N RECURSOS","tipo":"Texto","ej":"REGALIAS"},
+        {"col":"ULTIMA FECHA PAGO","tipo":"Fecha","ej":"2026-03-04"},
+    ]),
+}
+
+# ──────────────────────────────────────────────────────────────────
 # I/O
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 def to_bio(src):
-    if isinstance(src, (bytes, bytearray)): return io.BytesIO(src)
-    if isinstance(src, io.BytesIO): src.seek(0); return src
+    if isinstance(src,(bytes,bytearray)): return io.BytesIO(src)
+    if isinstance(src,io.BytesIO): src.seek(0); return src
     return io.BytesIO(src)
 
 def read_xl(src, table, cols=None):
@@ -246,914 +273,816 @@ def read_xl(src, table, cols=None):
 
 def fetch(url):
     try:
-        r = requests.get(url, timeout=40)
-        r.raise_for_status()
-        return r.content
-    except Exception:
-        return None
+        r = requests.get(url, timeout=40); r.raise_for_status(); return r.content
+    except: return None
 
-# ------------------------------------------------------------------
-# PROCESAMIENTO
-# ------------------------------------------------------------------
-def prog_fin_expr(df_low, suf):
-    existing = [c for c in PROG_COLS[suf] if c in df_low.columns]
-    if not existing: return pl.lit(0.0)
-    e = pl.col(existing[0]).cast(pl.Float64)
-    for c in existing[1:]: e = e + pl.col(c).cast(pl.Float64)
-    return e
-
-def proc_regalias(src, year):
+# ──────────────────────────────────────────────────────────────────
+# PROCESAMIENTO DE ARCHIVOS FINANCIEROS
+# ──────────────────────────────────────────────────────────────────
+def proc_reg(src, year):
     tbl = {"2024":"EjecucionRegalias","2025":"Pagos_Regalias_2025","2026":"Pagos_Regalias_2026"}
-    df = read_xl(src, tbl[year])
+    df  = read_xl(src, tbl[year])
     if df is None: return None
     try:
         df = df.select(pl.all().name.map(lambda x: x.strip().upper().replace("_X0009_","")))
-        if year == "2024":
-            df = (df.select(["CODIGO META","COMPROMISOS",COL_CLASIF.upper()])
+        if year=="2024":
+            df = (df.select(["CODIGO META","COMPROMISOS",CCLA.upper()])
                     .with_columns(pl.col("CODIGO META").fill_null(""))
                     .filter(pl.col("CODIGO META")!="", pl.col("CODIGO META").str.starts_with("MT"))
                     .rename({"COMPROMISOS":"RP"}))
-        elif year == "2025":
-            df = (df.select(["PAGOS REGALIAS","CODIGO META",COL_CLASIF.upper()])
+        elif year=="2025":
+            df = (df.select(["PAGOS REGALIAS","CODIGO META",CCLA.upper()])
                     .rename({"PAGOS REGALIAS":"RP"})
                     .with_columns(pl.col("CODIGO META").fill_null(""))
                     .filter(pl.col("CODIGO META")!=""))
-        elif year == "2026":
+        elif year=="2026":
             df = (df.filter((pl.col("ULTIMA FECHA PAGO")>=pl.date(2026,1,1))&
                             (pl.col("ULTIMA FECHA PAGO")<=pl.date(2026,12,31)))
-                    .select(["PAGO EJECUTADO VALOR","CODIGO META",COL_CLASIF.upper()])
+                    .select(["PAGO EJECUTADO VALOR","CODIGO META",CCLA.upper()])
                     .rename({"PAGO EJECUTADO VALOR":"RP"})
                     .with_columns(pl.col("CODIGO META").fill_null(""))
                     .filter(pl.col("CODIGO META")!=""))
         return df.select(["CODIGO META","RP"])
-    except Exception:
-        return None
+    except: return None
 
-def proc_hacienda(src, year):
+def proc_hac(src, year):
     tbl = {"2024":"EjecucionHaciendaDiciembre","2025":"EjecucionHaciendaDiciembre2025","2026":"EjecucionHacienda2026"}
-    df = read_xl(src, tbl[year])
+    df  = read_xl(src, tbl[year])
     if df is None: return None
     try:
-        if year == "2024":
-            df = (df.select(["RP","CODIGO META",COL_CLASIF])
-                    .with_columns(pl.col("CODIGO META",COL_CLASIF).fill_null(""))
-                    .filter(pl.col("CODIGO META")!="", pl.col(COL_CLASIF)!=""))
+        if year=="2024":
+            df = (df.select(["RP","CODIGO META",CCLA])
+                    .with_columns(pl.col("CODIGO META",CCLA).fill_null(""))
+                    .filter(pl.col("CODIGO META")!="", pl.col(CCLA)!=""))
         else:
             df = (df.with_columns(
-                      pl.col("PROYECTO ARCHIVADO","CODIGO META",COL_CLASIF,"SE VA A CARGAR EN PI").fill_null(""),
+                      pl.col("PROYECTO ARCHIVADO","CODIGO META",CCLA,"SE VA A CARGAR EN PI").fill_null(""),
                       pl.when(pl.col("DISTRIBUIR DE FORMA EQUITATIVA")=="SI")
                         .then(pl.col("RP")/2).otherwise(pl.col("RP")))
                     .filter(pl.col("PROYECTO ARCHIVADO")=="", pl.col("CODIGO META")!="",
-                            pl.col(COL_CLASIF)!="", pl.col("SE VA A CARGAR EN PI")==""))
+                            pl.col(CCLA)!="", pl.col("SE VA A CARGAR EN PI")==""))
         return df.select(["CODIGO META","RP"])
-    except Exception:
-        return None
+    except: return None
 
 def merge_ef(reg, hac, name):
     frames = [f for f in [reg,hac] if f is not None and not f.is_empty()]
     if not frames:
-        return pl.DataFrame({"CODIGO META":pl.Series([],dtype=pl.Utf8),
-                              name:pl.Series([],dtype=pl.Float64)})
-    return (pl.concat(frames,how="diagonal")
-              .group_by("CODIGO META").agg(pl.col("RP").sum().alias(name)))
+        return pl.DataFrame({"CODIGO META":pl.Series([],dtype=pl.Utf8), name:pl.Series([],dtype=pl.Float64)})
+    return pl.concat(frames,how="diagonal").group_by("CODIGO META").agg(pl.col("RP").sum().alias(name))
 
+# ──────────────────────────────────────────────────────────────────
+# CARGA PRINCIPAL
+# ──────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def load_all(pi_b, h24_b, r24_b, h25_b, r25_b, h26_b, r26_b):
-    # Plan Indicativo
     pi = read_xl(pi_b, "tblPlanIndicativo_2")
-    if pi is None: return None, ["Plan Indicativo"]
+    if pi is None: return None, True
 
-    orden_lin  = read_xl(pi_b, "orden_lineas")
-    orden_sec  = read_xl(pi_b, "orden_sectores")
-    orden_prog = read_xl(pi_b, "orden_programas")
-    homolog    = read_xl(pi_b, "HomologacionSecretarias")
+    ol  = read_xl(pi_b, "orden_lineas")
+    os_ = read_xl(pi_b, "orden_sectores")
+    op  = read_xl(pi_b, "orden_programas")
+    hom = read_xl(pi_b, "HomologacionSecretarias")
 
-    avail = [c for c in COLS_PI_REAL if c in pi.columns]
+    # Columnas físicas
+    avail  = [c for c in COLS_PI if c in pi.columns]
     fisicas = pi.select(avail)
 
+    # Programación financiera (lowercase)
     pi_low = pi.select(pl.all().name.map(lambda x: x.strip().lower()))
-    exprs = [pl.col("codigo meta")]
-    for suf, yr in [("24","2024"),("25","2025"),("26","2026"),("27","2027")]:
-        exprs.append(prog_fin_expr(pi_low, suf).alias(col_pf(yr)))
+    exprs  = [pl.col("codigo meta")]
+    for suf,yr in [("24","2024"),("25","2025"),("26","2026"),("27","2027")]:
+        exist = [c for c in PROG_COLS[suf] if c in pi_low.columns]
+        if exist:
+            e = pl.col(exist[0]).cast(pl.Float64)
+            for c in exist[1:]: e = e + pl.col(c).cast(pl.Float64)
+        else:
+            e = pl.lit(0.0)
+        exprs.append(e.alias(cPF(yr)))
     prog = pi_low.select(exprs)
 
     # Ejecuciones financieras
-    ef24 = merge_ef(proc_regalias(r24_b,"2024"), proc_hacienda(h24_b,"2024"), col_ef("2024"))
-    ef25 = merge_ef(proc_regalias(r25_b,"2025"), proc_hacienda(h25_b,"2025"), col_ef("2025"))
-    ef26 = merge_ef(proc_regalias(r26_b,"2026"), proc_hacienda(h26_b,"2026"), col_ef("2026"))
+    ef24 = merge_ef(proc_reg(r24_b,"2024"), proc_hac(h24_b,"2024"), cEF("2024"))
+    ef25 = merge_ef(proc_reg(r25_b,"2025"), proc_hac(h25_b,"2025"), cEF("2025"))
+    ef26 = merge_ef(proc_reg(r26_b,"2026"), proc_hac(h26_b,"2026"), cEF("2026"))
 
     prog = (prog.join(ef24,left_on="codigo meta",right_on="CODIGO META",how="left")
-                .join(ef25,left_on="codigo meta",right_on="CODIGO META",how="left")
-                .join(ef26,left_on="codigo meta",right_on="CODIGO META",how="left")
-                .with_columns(pl.col(col_ef("2024"),col_ef("2025"),col_ef("2026")).fill_null(0)))
+               .join(ef25,left_on="codigo meta",right_on="CODIGO META",how="left")
+               .join(ef26,left_on="codigo meta",right_on="CODIGO META",how="left")
+               .with_columns(pl.col(cEF("2024"),cEF("2025"),cEF("2026")).fill_null(0)))
 
     pff = fisicas.join(prog, left_on="Codigo Meta", right_on="codigo meta", how="left")
-    meta_cs = [col_meta(y) for y in ["2024","2025","2026","2027"] if col_meta(y) in pff.columns]
-    if meta_cs: pff = pff.with_columns([pl.col(c).fill_null(0) for c in meta_cs])
+    mc  = [cMeta(y) for y in ["2024","2025","2026","2027"] if cMeta(y) in pff.columns]
+    if mc: pff = pff.with_columns([pl.col(c).fill_null(0) for c in mc])
 
-    return {"pff":pff,"orden_lin":orden_lin,"orden_sec":orden_sec,
-            "orden_prog":orden_prog,"homolog":homolog}, []
+    return {"pff":pff,"ol":ol,"os":os_,"op":op,"hom":hom}, False
 
-# ------------------------------------------------------------------
-# GRAFICO GAUGE
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+# GAUGE
+# ──────────────────────────────────────────────────────────────────
 def gauge(val, title, color):
-    # El gauge muestra hasta 120 para que Superior (>=100%) sea visible
-    display_val = min(val * 100, 120)
+    dv = min(val*100, 120)
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=display_val,
-        number={"suffix":"%","font":{"size":30,"color":color,"family":"Sora"},
-                "valueformat":".1f"},
+        mode="gauge+number", value=dv,
+        number={"suffix":"%","font":{"size":28,"color":color,"family":"Sora"},"valueformat":".1f"},
         title={"text":title,"font":{"size":12,"color":"#6b7280"}},
-        gauge={
-            "axis":{"range":[0,120],"tickvals":[0,29,59,99,120],
-                    "ticktext":["0%","29%","59%","99%","≥100%"],
-                    "tickfont":{"size":9}},
-            "bar":{"color":color,"thickness":.28},
-            "bgcolor":"#f3f4f6","borderwidth":0,
-            # Semaforización oficial: Mínimo 0-29 | Medio 30-59 | Alto 60-99 | Superior ≥100
-            "steps":[
-                {"range":[0,  29], "color":"#fee2e2"},   # Mínimo  - salmon
-                {"range":[29, 59], "color":"#fef3c7"},   # Medio   - amarillo
-                {"range":[59, 99], "color":"#dbeafe"},   # Alto    - azul claro
-                {"range":[99,120], "color":"#d1fae5"},   # Superior- verde
-            ],
-            "threshold":{"line":{"color":"#374151","width":2},"thickness":.75,"value":display_val},
-        }
-    ))
+        gauge={"axis":{"range":[0,120],"tickvals":[0,29,59,99,120],
+                       "ticktext":["0%","29%","59%","99%","≥100%"],"tickfont":{"size":9}},
+               "bar":{"color":color,"thickness":.28},"bgcolor":"#f3f4f6","borderwidth":0,
+               "steps":[{"range":[0,29],"color":"#fee2e2"},{"range":[29,59],"color":"#fef3c7"},
+                        {"range":[59,99],"color":"#dbeafe"},{"range":[99,120],"color":"#d1fae5"}],
+               "threshold":{"line":{"color":"#374151","width":2},"thickness":.75,"value":dv}}))
     fig.update_layout(height=210, margin=dict(t=40,b=5,l=15,r=15), paper_bgcolor="white")
     return fig
 
-# ------------------------------------------------------------------
-# TABLA FORMATEADA HTML
-# ------------------------------------------------------------------
-def html_table(df: pd.DataFrame, col_pct: list = None, col_money: list = None,
-               tooltips: dict = None) -> str:
+# ──────────────────────────────────────────────────────────────────
+# CALCULOS DEL NOTEBOOK (fielmente replicados)
+# ──────────────────────────────────────────────────────────────────
+def calc_ponderados(pf, vig):
     """
-    Renderiza un DataFrame como tabla HTML con diseño institucional.
-    - col_pct:   columnas de porcentaje (float 0-1). Muestra pill de semaforización
-                 integrado en la misma celda junto al valor. No se necesita columna separada.
-    - col_money: columnas de valores monetarios (float). Formatea con $ y separador de miles.
-    - tooltips:  dict {nombre_columna: texto_tooltip} mostrado al pasar el cursor por el encabezado.
+    Replica ponderado_vigencia y ponderado_cuatrienio del notebook.
+    Retorna (pond_vig_df, pond_cuat_df, n_prog, n_total)
     """
-    col_pct   = col_pct   or []
-    col_money = col_money or []
-    tooltips  = tooltips  or {}
+    CM = cMeta(vig); CP = cPct(vig)
+    n_total = len(pf)
+    n_prog  = int(pf.filter(pl.col(CM).fill_null(0)!=0).height) if CM in pf.columns else 0
 
-    def th(name):
-        tip = tooltips.get(name, "")
-        tip_attr  = f' title="{tip}"' if tip else ""
-        tip_style = ' style="cursor:help;border-bottom:1px dashed rgba(255,255,255,.5)"' if tip else ""
-        return f"<th{tip_attr}{tip_style}>{name}</th>"
+    if n_prog == 0 or CP not in pf.columns:
+        return None, None, n_prog, n_total
 
-    headers = "".join(th(c) for c in df.columns)
-    rows = ""
-    for _, row in df.iterrows():
-        cells = ""
-        for c in df.columns:
-            v = row[c]
-            if c in col_pct and pd.notna(v):
-                # Normaliza a escala 0-1 independientemente de si llega como 0.92 o 92.0
-                try:
-                    raw_f = float(str(v).replace("%", "").strip())
-                    raw = raw_f if raw_f <= 1.5 else raw_f / 100.0
-                except (ValueError, TypeError):
-                    raw = 0.0
-                color = semaforo_color(raw)
-                lbl   = semaforo_label(raw)
-                # Pill + valor en la misma celda, sin columna separada
-                cells += (f'<td style="white-space:nowrap">'
-                          f'{pill_html(lbl, color)}'
-                          f'<span style="margin-left:6px;font-size:.82rem">{fmt_pct(raw)}</span>'
-                          f'</td>')
-            elif c in col_money and pd.notna(v):
-                try:
-                    cells += f'<td style="text-align:right">${float(v):,.0f}</td>'
-                except (ValueError, TypeError):
-                    cells += f"<td>{v}</td>"
-            else:
-                cells += f"<td>{v if pd.notna(v) else ''}</td>"
-        rows += f"<tr>{cells}</tr>"
+    # promedio por programa (solo metas programadas)
+    prom_prog = (
+        pf.filter(pl.col(CM).fill_null(0)!=0)
+          .group_by("Programa PDD")
+          .agg(pl.col(CP).fill_null(0).mean().alias("Promedio de avance de ejecucion de la vigencia"))
+    )
 
-    return (f'<div style="overflow-x:auto;max-height:440px;overflow-y:auto">'
-            f'<table class="dash-table"><thead><tr>{headers}</tr></thead>'
-            f'<tbody>{rows}</tbody></table></div>')
+    # ponderado_vigencia
+    pond_vig = (
+        pf.with_columns(
+            pl.when(pl.col(CM)!=0).then(1).otherwise(0).alias("mp"))
+          .group_by([CL,"Sector PDD","Programa PDD"])
+          .agg(pl.col("mp").sum().alias("Total Indicadores de Producto Programados"))
+          .with_columns((pl.col("Total Indicadores de Producto Programados")/n_prog)
+                        .alias("Sobre Numero Total de Metas Programadas"))
+          .join(prom_prog, on="Programa PDD", how="left")
+          .with_columns(pl.col("Promedio de avance de ejecucion de la vigencia").fill_null(0))
+    )
 
-# ------------------------------------------------------------------
+    # ponderado_cuatrienio
+    n_metas_prog = (
+        pf.group_by("Programa PDD")
+          .agg(pl.col("Codigo Meta").len().alias("Total Indicadores de Producto"))
+    )
+    pond_cuat = (
+        pf.group_by([CL,"Sector PDD","Programa PDD"])
+          .agg(pl.col(CPAC).fill_null(0).mean().alias("Promedio de avance de ejecucion acumulada"))
+          .join(n_metas_prog, on="Programa PDD")
+          .with_columns((pl.col("Total Indicadores de Producto")/n_total)
+                        .alias("Sobre Numero Total de Metas"))
+    )
+    return pond_vig, pond_cuat, n_prog, n_total
+
+def eficacia_grupo(pond_vig, pond_cuat, n_prog, n_total, group_col, es_vigencia=True):
+    """
+    Replica avance_vigencia_lineas / avance_cuatrienio_lineas del notebook.
+    Retorna DataFrame pandas con: group_col, % Avance de la Ejecucion Fisica
+    """
+    if es_vigencia and pond_vig is not None:
+        # cuenta metas programadas por grupo
+        n_grupo = (
+            pond_vig.group_by(group_col)
+                    .agg(pl.col("Total Indicadores de Producto Programados").sum()
+                           .alias("Total Indicadores de Producto con Programacion"))
+        )
+        df = (
+            pond_vig.group_by(group_col)
+                    .agg((pl.col("Promedio de avance de ejecucion de la vigencia")
+                          *pl.col("Sobre Numero Total de Metas Programadas")).sum()
+                          .alias("Aporte"))
+                    .join(n_grupo, on=group_col)
+                    .with_columns(
+                        (pl.col("Total Indicadores de Producto con Programacion")/n_prog)
+                          .alias("Peso"),
+                        pl.when(
+                            (pl.col("Total Indicadores de Producto con Programacion")/n_prog)==0)
+                          .then(0.0)
+                          .otherwise(pl.col("Aporte")/
+                                     (pl.col("Total Indicadores de Producto con Programacion")/n_prog))
+                          .alias("% Avance de la Ejecucion Fisica")
+                    )
+                    .sort("% Avance de la Ejecucion Fisica", descending=False)
+                    .to_pandas()[[group_col,"% Avance de la Ejecucion Fisica"]]
+        )
+    else:
+        # cuatrienio
+        if group_col == CL:
+            n_grupo = (
+                pond_cuat.group_by(group_col)
+                         .agg(pl.col("Total Indicadores de Producto").sum())
+            )
+        else:
+            n_grupo = (
+                pond_cuat.group_by(group_col)
+                         .agg(pl.col("Total Indicadores de Producto").sum())
+            )
+        df = (
+            pond_cuat.group_by(group_col)
+                     .agg((pl.col("Promedio de avance de ejecucion acumulada")
+                           *pl.col("Sobre Numero Total de Metas")).sum()
+                           .alias("Aporte"))
+                     .join(n_grupo, on=group_col)
+                     .with_columns(
+                         (pl.col("Total Indicadores de Producto")/n_total).alias("Peso"),
+                         pl.when((pl.col("Total Indicadores de Producto")/n_total)==0)
+                           .then(0.0)
+                           .otherwise(pl.col("Aporte")/
+                                      (pl.col("Total Indicadores de Producto")/n_total))
+                           .alias("% Avance de la Ejecucion Fisica")
+                     )
+                     .sort("% Avance de la Ejecucion Fisica", descending=False)
+                     .to_pandas()[[group_col,"% Avance de la Ejecucion Fisica"]]
+        )
+    return df
+
+def barra_horizontal(df, x_col, y_col, titulo, key):
+    vals = df[x_col].tolist()
+    fig = go.Figure(go.Bar(
+        x=[v*100 for v in vals], y=df[y_col].tolist(), orientation="h",
+        marker_color=[sem_color(v) for v in vals],
+        text=[fmt_pct(v) for v in vals], textposition="outside",
+        hovertemplate=f"<b>%{{y}}</b><br>{x_col}: %{{text}}<extra></extra>",
+    ))
+    fig.update_layout(
+        title=titulo, xaxis_title="% Avance", xaxis_range=[0,130],
+        height=max(300, len(df)*52), paper_bgcolor="white", plot_bgcolor="#fafafa",
+        font={"family":"DM Sans"}, margin=dict(l=20,r=110,t=40,b=20),
+    )
+    st.plotly_chart(fig, width="stretch", key=key)
+
+def barra_financiera(df, ejec_col, prog_col, pct_col, y_col, titulo, key):
+    vals = df[pct_col].tolist()
+    fig = go.Figure(go.Bar(
+        x=df[ejec_col].tolist(), y=df[y_col].tolist(), orientation="h",
+        marker_color=[sem_color(v) for v in vals],
+        text=[fmt_pct(v) for v in vals], textposition="outside",
+        customdata=df[[prog_col,ejec_col]].values,
+        hovertemplate=("<b>%{y}</b><br>Programacion: $%{customdata[0]:,.0f}<br>"
+                       "Ejecucion: $%{customdata[1]:,.0f}<br>Avance: %{text}<extra></extra>"),
+    ))
+    fig.update_layout(
+        title=titulo, xaxis_title="Ejecucion ($)",
+        height=max(300, len(df)*52), paper_bgcolor="white", plot_bgcolor="#fafafa",
+        font={"family":"DM Sans"}, margin=dict(l=20,r=110,t=40,b=20),
+    )
+    st.plotly_chart(fig, width="stretch", key=key)
+
+# ──────────────────────────────────────────────────────────────────
 # SIDEBAR
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## Dashboard PDD")
     st.markdown("#### Reporte de Avance 2024-2027")
     st.markdown("---")
     st.markdown("### Fuente de datos")
-    modo = st.radio("Como cargar archivos:", ["GitHub (2026 + PI)", "Todo manual"], index=0)
+    modo = st.radio("Origen de archivos:", ["GitHub (todos)", "Subir manualmente"], index=0)
     st.markdown("---")
     st.markdown("### Filtros")
     vig = st.selectbox("Vigencia:", VIGENCIAS, index=2)
+    modo_periodo = st.radio("Ver avance de:", ["Vigencia seleccionada", "Cuatrienio acumulado"], index=0)
+    es_vig = modo_periodo == "Vigencia seleccionada"
     ph_lin = st.empty()
     ph_sec = st.empty()
     ph_res = st.empty()
     st.markdown("---")
     st.markdown('<div style="font-size:.73rem;color:#94a3b8;line-height:1.6">'
-                'Los archivos 2024 y 2025 se cargan automaticamente desde GitHub.<br>'
-                'Solo necesitas subir el Plan Indicativo y los archivos 2026.</div>',
-                unsafe_allow_html=True)
+                'Semaforización: Superior ≥100% | Alto 60-99%<br>'
+                'Medio 30-59% | Minimo 0-29%</div>', unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 # HEADER
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+periodo_label = f"Vigencia {vig}" if es_vig else "Cuatrienio 2024-2027"
 st.markdown(f"""
 <div class="main-header">
   <h1>Reporte de Avance del Plan de Desarrollo</h1>
-  <p>Ejecucion Fisica y Financiera &middot; Vigencia <strong>{vig}</strong> &middot; Cuatrienio 2024&ndash;2027</p>
+  <p>Ejecucion Fisica y Financiera &middot; <strong>{periodo_label}</strong> &middot; Cuatrienio 2024&ndash;2027</p>
 </div>""", unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 # CARGA DE ARCHIVOS
-# ------------------------------------------------------------------
-pi_b = h24_b = r24_b = h25_b = r25_b = h26_b = r26_b = None
+# ──────────────────────────────────────────────────────────────────
+pi_b=h24_b=r24_b=h25_b=r25_b=h26_b=r26_b=None
 
-if modo == "GitHub (2026 + PI)":
-    st.markdown("### Carga de Archivos")
-    with st.expander("Archivos necesarios (Plan Indicativo + Vigencia 2026)", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            pi_file  = st.file_uploader("Plan Indicativo 2024-2027", type=["xlsx"], key="pi")
-        with c2:
-            h26_file = st.file_uploader("Hacienda 2026",             type=["xlsx"], key="h26")
-        with c3:
-            r26_file = st.file_uploader("Regalias 2026",             type=["xlsx"], key="r26")
-
-    pi_b  = pi_file.read()  if pi_file  else None
-    h26_b = h26_file.read() if h26_file else None
-    r26_b = r26_file.read() if r26_file else None
-
-    if pi_b:
-        with st.spinner("Descargando archivos 2024-2025 desde GitHub..."):
-            h24_b = fetch(GITHUB_H24)
-            r24_b = fetch(GITHUB_R24)
-            h25_b = fetch(GITHUB_H25)
-            r25_b = fetch(GITHUB_R25)
-        failed = [n for n,b in [("Hacienda 2024",h24_b),("Regalias 2024",r24_b),
-                                  ("Hacienda 2025",h25_b),("Regalias 2025",r25_b)] if b is None]
-        if failed:
-            st.warning(f"No se pudieron descargar desde GitHub: {', '.join(failed)}. "
-                       "Los datos financieros de esas vigencias no estaran disponibles.")
-    else:
-        st.markdown('<div class="upload-zone">Carga el <strong>Plan Indicativo</strong> para comenzar.'
-                    '<br><small>Los archivos 2024 y 2025 se descargan automaticamente.</small></div>',
-                    unsafe_allow_html=True)
+if modo == "GitHub (todos)":
+    st.info("Todos los archivos se cargan automaticamente desde GitHub. No necesitas subir nada.")
+    with st.spinner("Descargando archivos desde GitHub..."):
+        pi_b  = fetch(GH["pi"])
+        h24_b = fetch(GH["h24"]); r24_b = fetch(GH["r24"])
+        h25_b = fetch(GH["h25"]); r25_b = fetch(GH["r25"])
+        h26_b = fetch(GH["h26"]); r26_b = fetch(GH["r26"])
+    failed = [k for k,b in {"Plan Indicativo":pi_b,"Hacienda 2024":h24_b,"Regalias 2024":r24_b,
+                              "Hacienda 2025":h25_b,"Regalias 2025":r25_b,
+                              "Hacienda 2026":h26_b,"Regalias 2026":r26_b}.items() if b is None]
+    if failed:
+        st.warning(f"No se pudieron descargar: {', '.join(failed)}")
+    if pi_b is None:
+        st.error("No se pudo cargar el Plan Indicativo desde GitHub. Cambia a modo manual.")
+        st.stop()
 
 else:
     st.markdown("### Carga de Archivos")
-    with st.expander("Todos los archivos", expanded=True):
-        c1, c2 = st.columns(2)
+    with st.expander("Vigencias cerradas 2024-2025 (opcionales si usas GitHub)", expanded=False):
+        c1,c2 = st.columns(2)
         with c1:
-            pi_file  = st.file_uploader("Plan Indicativo 2024-2027", type=["xlsx"], key="pi2")
-            h24_file = st.file_uploader("Hacienda 2024",             type=["xlsx"], key="h24")
-            r24_file = st.file_uploader("Regalias 2024",             type=["xlsx"], key="r24")
-            h25_file = st.file_uploader("Hacienda 2025",             type=["xlsx"], key="h25")
+            pi_f  = st.file_uploader("Plan Indicativo",  type=["xlsx"], key="pi")
+            h24_f = st.file_uploader("Hacienda 2024",    type=["xlsx"], key="h24")
+            r24_f = st.file_uploader("Regalias 2024",    type=["xlsx"], key="r24")
         with c2:
-            r25_file = st.file_uploader("Regalias 2025",             type=["xlsx"], key="r25")
-            h26_file = st.file_uploader("Hacienda 2026",             type=["xlsx"], key="h26b")
-            r26_file = st.file_uploader("Regalias 2026",             type=["xlsx"], key="r26b")
+            h25_f = st.file_uploader("Hacienda 2025",    type=["xlsx"], key="h25")
+            r25_f = st.file_uploader("Regalias 2025",    type=["xlsx"], key="r25")
+        pi_b  = pi_f.read()  if pi_f  else None
+        h24_b = h24_f.read() if h24_f else None
+        r24_b = r24_f.read() if r24_f else None
+        h25_b = h25_f.read() if h25_f else None
+        r25_b = r25_f.read() if r25_f else None
 
-    pi_b  = pi_file.read()  if pi_file  else None
-    h24_b = h24_file.read() if h24_file else None
-    r24_b = r24_file.read() if r24_file else None
-    h25_b = h25_file.read() if h25_file else None
-    r25_b = r25_file.read() if r25_file else None
-    h26_b = h26_file.read() if h26_file else None
-    r26_b = r26_file.read() if r26_file else None
+    with st.expander("Vigencia actual 2026", expanded=True):
+        c1,c2 = st.columns(2)
+        with c1:
+            h26_f = st.file_uploader("Hacienda 2026",    type=["xlsx"], key="h26")
+        with c2:
+            r26_f = st.file_uploader("Regalias 2026",    type=["xlsx"], key="r26")
+        h26_b = h26_f.read() if h26_f else None
+        r26_b = r26_f.read() if r26_f else None
 
+    # Si no subió PI, descargar de GitHub como fallback
     if not pi_b:
-        st.markdown('<div class="upload-zone">Carga el <strong>Plan Indicativo</strong> para comenzar.</div>',
-                    unsafe_allow_html=True)
+        with st.spinner("Descargando Plan Indicativo desde GitHub..."):
+            pi_b = fetch(GH["pi"])
+        if not pi_b:
+            st.markdown('<div class="upload-zone">Carga el <b>Plan Indicativo</b> para comenzar.</div>',
+                        unsafe_allow_html=True)
+            st.stop()
+    # Misma lógica para 2024-2025 si no los subió
+    if not h24_b: h24_b = fetch(GH["h24"])
+    if not r24_b: r24_b = fetch(GH["r24"])
+    if not h25_b: h25_b = fetch(GH["h25"])
+    if not r25_b: r25_b = fetch(GH["r25"])
 
-if not pi_b:
-    st.stop()
-
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 # PROCESAMIENTO
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 with st.spinner("Procesando datos..."):
-    res, errs = load_all(pi_b, h24_b, r24_b, h25_b, r25_b, h26_b, r26_b)
+    res, err = load_all(pi_b, h24_b, r24_b, h25_b, r25_b, h26_b, r26_b)
 
-if res is None:
-    show_schema_error("Plan Indicativo", SCHEMAS["Plan Indicativo"]["cols"],
-                      SCHEMAS["Plan Indicativo"]["table"])
+if err:
+    show_err("Plan Indicativo", SCHEMAS["Plan Indicativo"][1], SCHEMAS["Plan Indicativo"][0])
     st.stop()
 
-pff    = res["pff"]
-ol     = res["orden_lin"]
-os_    = res["orden_sec"]
-op     = res["orden_prog"]
-hom    = res["homolog"]
+pff=res["pff"]; ol=res["ol"]; os_=res["os"]; op=res["op"]; hom=res["hom"]
 
 # Columnas activas
-CM  = col_meta(vig)
-CP  = col_pct(vig)
-CCA = col_cat(vig)
-CEF = col_ef(vig)
-CPF = col_pf(vig)
-cL  = COL_LINEA if COL_LINEA in pff.columns else "Linea Estrategica"
+CM=cMeta(vig); CP=cPct(vig); CCA=cCat(vig); CEF=cEF(vig); CPF=cPF(vig)
+cL = CL if CL in pff.columns else "Linea Estrategica"
 
-# Filtros sidebar
+# Calculos ponderados (usados en Tab 3)
+pond_vig, pond_cuat, n_prog, n_total = calc_ponderados(pff, vig)
+
+# Filtros
 lo = sorted(pff[cL].drop_nulls().unique().to_list()) if cL in pff.columns else []
 so = sorted(pff["Sector PDD"].drop_nulls().unique().to_list()) if "Sector PDD" in pff.columns else []
 ro = sorted(pff["Responsable"].drop_nulls().unique().to_list()) if "Responsable" in pff.columns else []
-with ph_lin: fl = st.multiselect("Linea:", lo, placeholder="Todas")
-with ph_sec: fs = st.multiselect("Sector:", so, placeholder="Todos")
+with ph_lin: fl = st.multiselect("Linea:", lo, placeholder="Todas las lineas")
+with ph_sec: fs = st.multiselect("Sector:", so, placeholder="Todos los sectores")
 with ph_res: fr = st.multiselect("Dependencia:", ro, placeholder="Todas")
 
 pf = pff.clone()
-if fl and cL in pf.columns:    pf = pf.filter(pl.col(cL).is_in(fl))
+if fl and cL in pf.columns:          pf = pf.filter(pl.col(cL).is_in(fl))
 if fs and "Sector PDD" in pf.columns: pf = pf.filter(pl.col("Sector PDD").is_in(fs))
 if fr and "Responsable" in pf.columns: pf = pf.filter(pl.col("Responsable").is_in(fr))
 
-# ------------------------------------------------------------------
-# CALCULOS GLOBALES (sección: Ejecución Física por Categorías - notebook)
-# ------------------------------------------------------------------
-n_total = len(pf)
-n_prog  = int(pf.filter(pl.col(CM).fill_null(0)!=0).height) if CM in pf.columns else 0
+# Recalcular con filtro aplicado
+pond_vig_f, pond_cuat_f, n_prog_f, n_total_f = calc_ponderados(pf, vig)
 
-avance_vig = 0.0
-if CP in pf.columns and CM in pf.columns and n_prog > 0:
-    avance_vig = float(pf.filter(pl.col(CM).fill_null(0)!=0)
-                         .select(pl.col(CP).fill_null(0).mean()).item() or 0)
-
-avance_acum = 0.0
-if COL_PCT_ACUM in pf.columns:
-    avance_acum = float(pf.select(pl.col(COL_PCT_ACUM).fill_null(0).mean()).item() or 0)
-
+# KPIs globales
 n_sup = 0
 if CCA in pf.columns and CM in pf.columns:
     n_sup = int(pf.filter(pl.col(CM).fill_null(0)!=0).filter(pl.col(CCA)=="Superior").height)
 
-ejec_fin = 0.0; prog_fin = 0.0; pct_fin = 0.0
+ejec_fin=0.0; prog_fin=0.0; pct_fin=0.0
 if CEF in pf.columns: ejec_fin = float(pf.select(pl.col(CEF).sum()).item() or 0)
 if CPF in pf.columns: prog_fin = float(pf.select(pl.col(CPF).sum()).item() or 0)
-if prog_fin > 0: pct_fin = ejec_fin / prog_fin
+if prog_fin > 0: pct_fin = ejec_fin/prog_fin
 
-# Distribucion de metas (del notebook: distribucion_metas_pdd)
-meta_cuatrenio = float(pf.select(pl.col("Meta de cuatrenio").fill_null(0).sum()).item() or 0) \
+avance_ponderado = 0.0
+if pond_vig_f is not None and n_prog_f > 0:
+    avance_ponderado = float(
+        pond_vig_f.select(
+            (pl.col("Promedio de avance de ejecucion de la vigencia")
+             *pl.col("Sobre Numero Total de Metas Programadas")).sum()
+        ).item() or 0)
+
+avance_ponderado_acum = 0.0
+if pond_cuat_f is not None:
+    avance_ponderado_acum = float(
+        pond_cuat_f.select(
+            (pl.col("Promedio de avance de ejecucion acumulada")
+             *pl.col("Sobre Numero Total de Metas")).sum()
+        ).item() or 0)
+
+avance_display = avance_ponderado if es_vig else avance_ponderado_acum
+
+# Distribucion de metas (notebook: distribucion_metas_pdd)
+meta_cuat = float(pf.select(pl.col("Meta de cuatrenio").fill_null(0).sum()).item() or 0) \
     if "Meta de cuatrenio" in pf.columns else 0
-dist_metas = {}
+dist = {}
 for y in ["2024","2025","2026","2027"]:
-    mc = col_meta(y)
-    if mc in pf.columns and meta_cuatrenio > 0:
-        dist_metas[y] = float(pf.select(pl.col(mc).fill_null(0).sum()).item() or 0) / meta_cuatrenio
-    else:
-        dist_metas[y] = 0.0
+    mc = cMeta(y)
+    dist[y] = float(pf.select(pl.col(mc).fill_null(0).sum()).item() or 0)/meta_cuat \
+        if mc in pf.columns and meta_cuat>0 else 0.0
 
-# Avance ponderado vigencia y cuatrienio (del notebook)
-avance_pond_vig  = 0.0
-avance_pond_acum = 0.0
-
-# avance_pond_vig: ponderado por peso de cada programa en metas programadas de la vigencia
-if n_prog > 0 and CP in pf.columns and "Programa PDD" in pf.columns:
-    pv = (pf.filter(pl.col(CM).fill_null(0) != 0)
-            .group_by("Programa PDD")
-            .agg(pl.col(CP).fill_null(0).mean().alias("prom"),
-                 pl.col("Codigo Meta").len().alias("n_prog_p"))
-            .with_columns((pl.col("n_prog_p") / n_prog).alias("peso")))
-    avance_pond_vig = float(pv.select((pl.col("prom") * pl.col("peso")).sum()).item() or 0)
-
-# avance_pond_acum: ponderado por peso de cada programa sobre el total de metas
-if COL_PCT_ACUM in pf.columns and "Programa PDD" in pf.columns and len(pf) > 0:
-    n_tot = len(pf)
-    pc = (pf.group_by("Programa PDD")
-            .agg(pl.col(COL_PCT_ACUM).fill_null(0).mean().alias("prom"),
-                 pl.col("Codigo Meta").len().alias("n_p"))
-            .with_columns((pl.col("n_p") / n_tot).alias("peso")))
-    avance_pond_acum = float(pc.select((pl.col("prom") * pl.col("peso")).sum()).item() or 0)
-
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 # TABS
-# ------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Resumen General", "Ejecucion Financiera", "Ejecucion Fisica", "Por Dependencia"
-])
+# ──────────────────────────────────────────────────────────────────
+tab1,tab2,tab3,tab4 = st.tabs(["Resumen General","Ejecucion Financiera","Ejecucion Fisica","Por Dependencia"])
 
 # ================================================================
 # TAB 1: RESUMEN GENERAL
 # ================================================================
 with tab1:
-    sec(f"Indicadores Clave - Vigencia {vig}")
-
+    sec(f"Indicadores Clave - {periodo_label}")
     k1,k2,k3,k4,k5 = st.columns(5)
-    with k1: kpi("Metas Totales", str(n_total), "",
-                 "Total de indicadores de producto del PDD con los filtros aplicados.")
-    with k2: kpi(f"Metas Programadas {vig}", str(n_prog), "c",
-                 f"Indicadores cuya Meta Fisica Esperada {vig} es mayor a cero.")
-    with k3: kpi(f"Avance Ponderado {vig}", fmt_pct(avance_pond_vig), "v",
-                 f"Suma de (metas_prog_programa / total_metas_prog) × promedio_avance_programa. "
-                 "Pondera cada programa segun su peso relativo en la vigencia.")
-    with k4: kpi("Avance Ponderado Cuatrienio", fmt_pct(avance_pond_acum), "n",
-                 "Suma de (metas_programa / total_metas) × promedio_avance_acumulado_programa. "
-                 "Pondera el aporte de cada programa al cuatrienio completo.")
-    with k5: kpi(f"Metas Superiores {vig}", str(n_sup), "ca",
-                 f"Indicadores con CATEGORIA DE EJECUCION FISICA {vig} igual a 'Superior' "
-                 "(ejecucion mayor o igual al 100%).")
+    with k1: kpi_card("Metas Totales", str(n_total_f), "",
+        "Total de indicadores de producto del PDD con los filtros aplicados.")
+    with k2: kpi_card(f"Metas Programadas {vig}", str(n_prog_f), "c",
+        f"Indicadores con Meta Fisica Esperada {vig} mayor a cero.")
+    with k3: kpi_card(f"Avance Ponderado {vig}", fmt_pct(avance_ponderado), "v",
+        f"Suma de (peso_programa) x (promedio_avance_programa) donde peso = metas_prog_programa / total_metas_prog_vigencia.")
+    with k4: kpi_card("Avance Ponderado Cuatrienio", fmt_pct(avance_ponderado_acum), "n",
+        "Suma de (peso_programa) x (promedio_avance_acumulado_programa) donde peso = metas_programa / total_metas.")
+    with k5: kpi_card(f"Metas Superiores {vig}", str(n_sup), "ca",
+        f"Metas cuya CATEGORIA DE EJECUCION FISICA {vig} es 'Superior' (ejecucion >= 100%).")
 
     st.markdown('<hr class="sep">', unsafe_allow_html=True)
-
-    # Gauges
     cg1,cg2,cg3 = st.columns(3)
-    with cg1: st.plotly_chart(gauge(avance_pond_vig, f"Avance Ponderado {vig}",
-                                     semaforo_color(avance_pond_vig)),
-                               width="stretch", key="g1")
-    with cg2: st.plotly_chart(gauge(avance_pond_acum, "Avance Ponderado Cuatrienio",
-                                     semaforo_color(avance_pond_acum)),
-                               width="stretch", key="g2")
-    with cg3: st.plotly_chart(gauge(pct_fin, f"Ejecucion Financiera {vig}",
-                                     semaforo_color(pct_fin)),
-                               width="stretch", key="g3")
+    with cg1: st.plotly_chart(gauge(avance_ponderado,f"Avance Ponderado {vig}",sem_color(avance_ponderado)), width="stretch", key="g1")
+    with cg2: st.plotly_chart(gauge(avance_ponderado_acum,"Avance Ponderado Cuatrienio",sem_color(avance_ponderado_acum)), width="stretch", key="g2")
+    with cg3: st.plotly_chart(gauge(pct_fin,f"Ejecucion Financiera {vig}",sem_color(pct_fin)), width="stretch", key="g3")
 
-    st.caption(
-        f"Avance Ponderado Vigencia: cada programa PDD aporta segun la proporcion de sus metas "
-        f"programadas en {vig}. "
-        "Avance Cuatrienio: cada programa aporta segun su proporcion sobre el total de metas del PDD. "
-        "Ejecucion Financiera: (RP Hacienda + Pagos Regalias) / Programacion Financiera de la vigencia."
-    )
-
+    # Distribución de metas (notebook: distribucion_metas_pdd)
     st.markdown('<hr class="sep">', unsafe_allow_html=True)
-
-    # Distribucion de metas PDD (del notebook: distribucion_metas_pdd)
-    sec("Distribucion de Metas del Plan de Cuatrenio")
-    dcol1, dcol2 = st.columns([1.4, 1])
-    with dcol1:
-        fig_dist = go.Figure()
-        years_d  = list(dist_metas.keys())
-        vals_d   = [dist_metas[y] * 100 for y in years_d]
-        colors_d = [semaforo_color(dist_metas[y]) for y in years_d]
-        fig_dist.add_trace(go.Bar(
-            x=years_d, y=vals_d,
-            marker_color=colors_d,
-            text=[f"{v:.1f}%" for v in vals_d],
-            textposition="outside",
+    sec("Distribucion de la Meta Fisica del Cuatrienio por Vigencia")
+    dc1,dc2 = st.columns([1.4,1])
+    with dc1:
+        fig_d = go.Figure(go.Bar(
+            x=list(dist.keys()), y=[v*100 for v in dist.values()],
+            marker_color=[sem_color(v) for v in dist.values()],
+            text=[fmt_pct(v) for v in dist.values()], textposition="outside",
             hovertemplate="<b>%{x}</b><br>Distribucion: %{y:.1f}%<extra></extra>",
         ))
-        fig_dist.update_layout(
-            title="Porcentaje de la meta cuatrienal programada por vigencia",
-            yaxis_title="% sobre Meta Cuatrienal", yaxis_range=[0, max(vals_d or [0])*1.2+5],
-            height=320, paper_bgcolor="white", plot_bgcolor="#fafafa",
-            font={"family":"DM Sans"}, margin=dict(t=50,b=20,l=20,r=20),
-        )
-        st.plotly_chart(fig_dist, width="stretch", key="dist_bar")
-
-    with dcol2:
-        st.markdown("**Como se interpreta**")
-        st.markdown(
-            "Cada barra muestra que porcentaje de la meta total del cuatrienio "
-            "fue programado para esa vigencia.<br>"
-            "Se calcula como: <code>Suma(Meta Fisica Esperada año) / Suma(Meta de cuatrenio)</code>.<br><br>"
-            "Una distribucion ideal seria balanceada entre los 4 años. "
-            "Vigencias con mayor porcentaje tienen mayor exigencia de ejecucion.",
-            unsafe_allow_html=True,
-        )
+        fig_d.update_layout(
+            yaxis_title="% sobre Meta Cuatrienal",
+            yaxis_range=[0, max(v*100 for v in dist.values())*1.25+5] if any(dist.values()) else [0,30],
+            height=300, paper_bgcolor="white", plot_bgcolor="#fafafa",
+            font={"family":"DM Sans"}, margin=dict(t=20,b=20,l=20,r=20))
+        st.plotly_chart(fig_d, width="stretch", key="dist_bar")
+    with dc2:
+        st.markdown("**Como se calcula:**")
+        st.markdown("Suma(Meta Fisica Esperada año) / Suma(Meta de cuatrenio). "
+                    "Muestra que fraccion de la meta total del cuatrienio se programo para cada vigencia.")
         st.markdown("")
-        st.markdown("**Semaforización oficial**")
-        for lbl, rango in [("Superior","Mayor o igual al 100%"),("Alto","60% – 99%"),
-                             ("Medio","30% – 59%"),("Minimo","0% – 29%")]:
-            col = SEM_COLORS[lbl]
-            st.markdown(
-                f'<span class="pill" style="background:{col}22;color:{col};border:1px solid {col}">'
-                f'{lbl}</span> &nbsp; {rango}', unsafe_allow_html=True)
+        st.markdown("**Semaforización institucional:**")
+        for lbl,rango in [("Superior","≥ 100%"),("Alto","60–99%"),("Medio","30–59%"),("Minimo","< 30%")]:
+            clr = {"Superior":C["verde"],"Alto":C["cyan"],"Medio":C["naranja"],"Minimo":C["salmon"]}[lbl]
+            st.markdown(f'{pill(lbl,clr)} &nbsp; {rango}', unsafe_allow_html=True)
             st.write("")
 
-    # Categoria de ejecucion (semaforización oficial)
+    # Distribución por categoría de ejecución
     if CCA in pf.columns and CM in pf.columns:
-        sec(f"Semaforización de Metas - Vigencia {vig}")
+        sec(f"Semaforización de Metas - {vig}")
         cat_df = (pf.filter(pl.col(CM).fill_null(0)!=0)
                     .group_by(CCA).agg(pl.col("Codigo Meta").len().alias("n"))
                     .drop_nulls().to_pandas())
         if not cat_df.empty:
-            cp1,cp2 = st.columns([1.2,1])
-            with cp1:
-                labels = cat_df[CCA].tolist()
-                vals   = cat_df["n"].tolist()
-                cols_p = [SEM_COLORS.get(l, C["cafe"]) for l in labels]
+            total_prog = cat_df["n"].sum()
+            p1,p2 = st.columns([1.2,1])
+            with p1:
                 fig_pie = go.Figure(go.Pie(
-                    labels=labels, values=vals, marker_colors=cols_p,
+                    labels=cat_df[CCA], values=cat_df["n"],
+                    marker_colors=[sem_color({"Superior":1.0,"Alto":0.7,"Medio":0.4,"Minimo":0.1}.get(l,0))
+                                   for l in cat_df[CCA]],
                     hole=.44, textinfo="label+percent",
                     hovertemplate="<b>%{label}</b><br>%{value} metas<br>%{percent}<extra></extra>",
                 ))
-                fig_pie.update_layout(title=f"Categorias de ejecucion {vig}",
-                                       height=340, paper_bgcolor="white",
-                                       font={"family":"DM Sans"},
-                                       margin=dict(t=50,b=10,l=10,r=10))
+                fig_pie.update_layout(title=f"Categorias de ejecucion {vig}", height=330,
+                    paper_bgcolor="white", font={"family":"DM Sans"}, margin=dict(t=50,b=5,l=5,r=5))
                 st.plotly_chart(fig_pie, width="stretch", key="pie_cat")
-            with cp2:
-                # Tabla resumen categorias
-                total_prog = cat_df["n"].sum()
-                rows_cat = []
-                for _, row in cat_df.iterrows():
-                    rows_cat.append({
-                        "Categoria": row[CCA],
-                        "Metas": int(row["n"]),
-                        "% del total programado": f"{row['n']/total_prog*100:.1f}%"
-                    })
-                cat_pd = pd.DataFrame(rows_cat)
-                cat_pd = cat_pd.sort_values("Metas", ascending=False).reset_index(drop=True)
-                # Convertir la categoria a un valor "pseudo-porcentaje" para que html_table
-                # muestre el pill de semaforización correctamente.
-                # Usamos la misma logica: Superior=1.0, Alto=0.7, Medio=0.4, Minimo=0.1
-                sem_map = {"Superior": 1.0, "Alto": 0.7, "Medio": 0.4, "Minimo": 0.1}
-                cat_pd["Categoria_pct"] = cat_pd["Categoria"].map(sem_map).fillna(0.0)
-                # Renombramos para la tabla final
-                cat_display = cat_pd[["Categoria_pct", "Metas", "% del total programado"]].copy()
-                cat_display.columns = ["Categoria", "Metas", "% del total programado"]
-                st.markdown(html_table(cat_display,
-                    col_pct=["Categoria"],
-                    tooltips={
-                        "Categoria": "Semaforización oficial: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
-                        "% del total programado": "Proporcion sobre las metas con programacion en la vigencia.",
-                    }),
+            with p2:
+                sem_map = {"Superior":1.0,"Alto":0.7,"Medio":0.4,"Minimo":0.1}
+                cat_show = cat_df.copy()
+                cat_show["Semaforo_val"] = cat_show[CCA].map(sem_map).fillna(0)
+                cat_show["% del total"] = (cat_show["n"]/total_prog*100).round(1).astype(str)+"%"
+                cat_show = cat_show[["Semaforo_val","n","% del total"]].copy()
+                cat_show.columns = ["Categoria","Metas","% del total"]
+                st.markdown(htable(cat_show, col_pct=["Categoria"],
+                    tooltips={"Categoria":"Semaforización: Superior ≥100% | Alto 60-99% | Medio 30-59% | Minimo <30%",
+                              "% del total":"Sobre metas con programacion en la vigencia."}),
                     unsafe_allow_html=True)
 
 # ================================================================
 # TAB 2: EJECUCION FINANCIERA
 # ================================================================
 with tab2:
-    fin_ok = CEF in pf.columns and CPF in pf.columns
-    if not fin_ok:
-        st.info(f"No hay datos financieros para {vig}. Verifica que los archivos de hacienda y regalias esten cargados.")
-    else:
-        # Lineas
-        sec(f"Ejecucion Financiera por Linea Estrategica - {vig}")
-        if cL in pf.columns and ol is not None:
-            ord_c = "Orden Linea" if "Orden Linea" in ol.columns else ol.columns[1]
-            jc    = cL if cL in ol.columns else ol.columns[0]
-            lf = (pf.group_by(cL).agg(pl.col(CPF).sum(), pl.col(CEF).sum())
-                    .join(ol, left_on=cL, right_on=jc, how="inner")
-                    .with_columns(pl.when(pl.col(CPF)==0).then(0.0)
-                                    .otherwise(pl.col(CEF)/pl.col(CPF)).alias("Pct"))
-                    .sort(ord_c).to_pandas())
+    # Sub-tabs: vigencia vs cuatrienio
+    ft1,ft2 = st.tabs([f"Vigencia {vig}", "Cuatrienio Acumulado"])
+
+    # ── VIGENCIA ──────────────────────────────────────────────
+    with ft1:
+        if CEF not in pf.columns or CPF not in pf.columns:
+            st.info(f"No hay datos financieros para {vig}. Verifica que los archivos de hacienda y regalias esten cargados.")
+        else:
+            def fin_lineas_vig(pf_src, vig_sel):
+                CPF_ = cPF(vig_sel); CEF_ = cEF(vig_sel)
+                if CPF_ not in pf_src.columns or CEF_ not in pf_src.columns: return pd.DataFrame()
+                ord_c = "Orden Linea" if ol is not None and "Orden Linea" in ol.columns else None
+                jc    = cL if ol is not None and cL in ol.columns else (ol.columns[0] if ol is not None else None)
+                q = (pf_src.group_by(cL).agg(pl.col(CPF_).sum(), pl.col(CEF_).sum())
+                           .with_columns(pl.when(pl.col(CPF_)==0).then(0.0)
+                                           .otherwise(pl.col(CEF_)/pl.col(CPF_)).alias("Pct")))
+                if ol is not None and jc:
+                    q = q.join(ol, left_on=cL, right_on=jc, how="left")
+                    if ord_c: q = q.sort(ord_c)
+                return q.to_pandas()
+
+            def fin_sectores_vig(pf_src, vig_sel):
+                CPF_ = cPF(vig_sel); CEF_ = cEF(vig_sel)
+                if CPF_ not in pf_src.columns or CEF_ not in pf_src.columns: return pd.DataFrame()
+                ord_c = "Orden Sector" if os_ is not None and "Orden Sector" in os_.columns else None
+                q = (pf_src.group_by("Sector PDD").agg(pl.col(CPF_).sum(), pl.col(CEF_).sum())
+                           .with_columns(pl.when(pl.col(CPF_)==0).then(0.0)
+                                           .otherwise(pl.col(CEF_)/pl.col(CPF_)).alias("Pct")))
+                if os_ is not None:
+                    q = q.join(os_, on="Sector PDD", how="left")
+                    if ord_c: q = q.sort(ord_c)
+                return q.to_pandas()
+
+            def fin_programas_vig(pf_src, vig_sel):
+                CPF_ = cPF(vig_sel); CEF_ = cEF(vig_sel)
+                if CPF_ not in pf_src.columns or CEF_ not in pf_src.columns: return pd.DataFrame()
+                ord_c = "Orden Programa PDD" if op is not None and "Orden Programa PDD" in op.columns else None
+                q = (pf_src.group_by("Programa PDD").agg(pl.col(CPF_).sum(), pl.col(CEF_).sum())
+                           .with_columns(pl.when(pl.col(CPF_)==0).then(0.0)
+                                           .otherwise(pl.col(CEF_)/pl.col(CPF_)).alias("Pct")))
+                if op is not None:
+                    q = q.join(op, on="Programa PDD", how="left")
+                    if ord_c: q = q.sort(ord_c)
+                return q.to_pandas()
+
+            # Lineas
+            sec(f"Ejecucion Financiera por Linea Estrategica - {vig}")
+            lf = fin_lineas_vig(pf, vig)
             if not lf.empty:
-                gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
-                with gtab1:
-                    fig_lf = go.Figure(go.Bar(
-                        x=lf[CEF], y=lf[cL], orientation="h",
-                        marker_color=[semaforo_color(v) for v in lf["Pct"]],
-                        text=[fmt_pct(v) for v in lf["Pct"]], textposition="outside",
-                        customdata=lf[[CPF,CEF,"Pct"]].values,
-                        hovertemplate=(
-                            "<b>%{y}</b><br>Programacion: $%{customdata[0]:,.0f}<br>"
-                            "Ejecucion: $%{customdata[1]:,.0f}<br>Avance: %{text}<extra></extra>"),
-                    ))
-                    fig_lf.update_layout(xaxis_title="Ejecucion ($)",
-                        height=max(320,len(lf)*46), paper_bgcolor="white",
-                        plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                        margin=dict(l=20,r=100,t=30,b=20))
-                    st.plotly_chart(fig_lf, width="stretch", key="bar_lf")
-                    st.caption("Ejecucion / Programacion de la vigencia. Semaforización oficial aplicada.")
-                with gtab2:
-                    lf_show = lf[[cL, CPF, CEF, "Pct"]].copy()
-                    lf_show.columns = ["Linea Estrategica","Programacion ($)","Ejecucion ($)","% Avance"]
-                    st.markdown(html_table(lf_show,
-                        col_money=["Programacion ($)","Ejecucion ($)"],
-                        col_pct=["% Avance"],
-                        tooltips={"% Avance":"Ejecucion Financiera / Programacion Financiera de la vigencia.",
-                                  "Programacion ($)":"Suma de todas las fuentes: ICLD, ICDE, SGP, Regalias, Credito, Cofinanciacion, Otras Fuentes.",
-                                  "Ejecucion ($)":"RP registrados en Hacienda mas Pagos de Regalias."}),
-                        unsafe_allow_html=True)
+                gt1,gt2 = st.tabs(["Grafico","Tabla"])
+                with gt1:
+                    barra_financiera(lf, CEF, CPF, "Pct", cL, f"Lineas - {vig}", "bfl_v")
+                    st.caption("Ejecucion / Programacion de la vigencia. Semaforización institucional aplicada.")
+                with gt2:
+                    s = lf[[cL,CPF,CEF,"Pct"]].copy(); s.columns=["Linea",f"Prog. {vig}",f"Ejec. {vig}","% Avance"]
+                    st.markdown(htable(s,col_pct=["% Avance"],col_money=[f"Prog. {vig}",f"Ejec. {vig}"],
+                        tooltips={"% Avance":f"Ejecucion Financiera {vig} / Programacion Financiera {vig}",
+                                  f"Prog. {vig}":"Suma ICLD+ICDE+SGP+Regalias+Credito+Cofinanciacion+Otras Fuentes",
+                                  f"Ejec. {vig}":"RP Hacienda + Pagos Regalias"}),unsafe_allow_html=True)
 
-        # Sectores
-        sec(f"Ejecucion Financiera por Sector PDD - {vig}")
-        if "Sector PDD" in pf.columns and os_ is not None:
-            ord_cs = "Orden Sector" if "Orden Sector" in os_.columns else os_.columns[1]
-            sf = (pf.group_by("Sector PDD").agg(pl.col(CPF).sum(), pl.col(CEF).sum())
-                    .join(os_, on="Sector PDD", how="inner")
-                    .with_columns(pl.when(pl.col(CPF)==0).then(0.0)
-                                    .otherwise(pl.col(CEF)/pl.col(CPF)).alias("Pct"))
-                    .sort(ord_cs).to_pandas())
+            # Sectores
+            sec(f"Ejecucion Financiera por Sector PDD - {vig}")
+            sf = fin_sectores_vig(pf, vig)
             if not sf.empty:
-                gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
-                with gtab1:
-                    fig_sf = go.Figure(go.Bar(
-                        x=sf[CEF], y=sf["Sector PDD"], orientation="h",
-                        marker_color=[semaforo_color(v) for v in sf["Pct"]],
-                        text=[fmt_pct(v) for v in sf["Pct"]], textposition="outside",
-                        customdata=sf[[CPF,CEF,"Pct"]].values,
-                        hovertemplate=(
-                            "<b>%{y}</b><br>Programacion: $%{customdata[0]:,.0f}<br>"
-                            "Ejecucion: $%{customdata[1]:,.0f}<br>Avance: %{text}<extra></extra>"),
-                    ))
-                    fig_sf.update_layout(xaxis_title="Ejecucion ($)",
-                        height=max(320,len(sf)*46), paper_bgcolor="white",
-                        plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                        margin=dict(l=20,r=100,t=30,b=20))
-                    st.plotly_chart(fig_sf, width="stretch", key="bar_sf")
-                with gtab2:
-                    sf_show = sf[["Sector PDD",CPF,CEF,"Pct"]].copy()
-                    sf_show.columns = ["Sector PDD","Programacion ($)","Ejecucion ($)","% Avance"]
-                    st.markdown(html_table(sf_show,
-                        col_money=["Programacion ($)","Ejecucion ($)"], col_pct=["% Avance"],
-                        tooltips={"% Avance":"Ejecucion / Programacion de la vigencia por sector."}),
-                        unsafe_allow_html=True)
+                gt1,gt2 = st.tabs(["Grafico","Tabla"])
+                with gt1:
+                    barra_financiera(sf, CEF, CPF, "Pct", "Sector PDD", f"Sectores - {vig}", "bfs_v")
+                with gt2:
+                    s = sf[["Sector PDD",CPF,CEF,"Pct"]].copy(); s.columns=["Sector",f"Prog. {vig}",f"Ejec. {vig}","% Avance"]
+                    st.markdown(htable(s,col_pct=["% Avance"],col_money=[f"Prog. {vig}",f"Ejec. {vig}"]),unsafe_allow_html=True)
 
-        # Comparativo anual
-        sec("Ejecucion Financiera Acumulada 2024-2026")
-        yrs = [y for y in ["2024","2025","2026"] if col_ef(y) in pf.columns]
-        if yrs:
-            ev = [float(pf.select(pl.col(col_ef(y)).sum()).item() or 0) for y in yrs]
-            pv = [float(pf.select(pl.col(col_pf(y)).sum()).item() or 0)
-                  if col_pf(y) in pf.columns else 0 for y in yrs]
-            fig_acum = go.Figure()
-            fig_acum.add_trace(go.Bar(name="Programacion",x=yrs,y=pv,
-                                       marker_color=C["cyan"],opacity=.75))
-            fig_acum.add_trace(go.Bar(name="Ejecucion",x=yrs,y=ev,
-                                       marker_color=C["azul"]))
-            fig_acum.update_layout(barmode="group",
-                title="Programacion vs Ejecucion Financiera por Año",
-                yaxis_title="Valor ($)", height=360, paper_bgcolor="white",
-                plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                legend=dict(orientation="h",y=1.1),
-                margin=dict(l=20,r=20,t=60,b=20))
-            st.plotly_chart(fig_acum, width="stretch", key="bar_acum")
-            st.caption("Programacion: suma ICLD+ICDE+SGP+Regalias+Credito+Cofinanciacion+Otras Fuentes. "
-                       "Ejecucion: RP Hacienda + Pagos Regalias.")
+            # Programas
+            sec(f"Ejecucion Financiera por Programa PDD - {vig}")
+            prgf = fin_programas_vig(pf, vig)
+            if not prgf.empty:
+                gt1,gt2 = st.tabs(["Grafico","Tabla"])
+                with gt1:
+                    barra_financiera(prgf, CEF, CPF, "Pct", "Programa PDD", f"Programas - {vig}", "bfp_v")
+                with gt2:
+                    s = prgf[["Programa PDD",CPF,CEF,"Pct"]].copy(); s.columns=["Programa",f"Prog. {vig}",f"Ejec. {vig}","% Avance"]
+                    st.markdown(htable(s,col_pct=["% Avance"],col_money=[f"Prog. {vig}",f"Ejec. {vig}"]),unsafe_allow_html=True)
+
+    # ── CUATRIENIO ────────────────────────────────────────────
+    with ft2:
+        # Ejecucion acumulada por linea (2024+2025+2026)
+        yrs_disp = [y for y in ["2024","2025","2026"] if cEF(y) in pf.columns]
+        if not yrs_disp:
+            st.info("No hay datos financieros acumulados disponibles.")
+        else:
+            # KPIs acumulados
+            ejec_acum = sum(float(pf.select(pl.col(cEF(y)).sum()).item() or 0) for y in yrs_disp)
+            prog_cuat = sum(float(pf.select(pl.col(cPF(y)).sum()).item() or 0)
+                           for y in ["2024","2025","2026","2027"] if cPF(y) in pf.columns)
+            pct_acum  = ejec_acum/prog_cuat if prog_cuat>0 else 0
+            ka1,ka2,ka3 = st.columns(3)
+            with ka1: kpi_card("Programacion Cuatrienio", fmt_cop(prog_cuat),"","Suma de programacion 2024-2027 de todas las fuentes.")
+            with ka2: kpi_card("Ejecucion Acumulada", fmt_cop(ejec_acum),"v","Suma de RP Hacienda + Pagos Regalias 2024-2026.")
+            with ka3: kpi_card("% Avance Acumulado", fmt_pct(pct_acum),"c","Ejecucion Acumulada / Programacion Cuatrienio.")
+
+            st.markdown('<hr class="sep">', unsafe_allow_html=True)
+
+            # Comparativo anual programacion vs ejecucion
+            sec("Programacion vs Ejecucion por Año")
+            ev = [float(pf.select(pl.col(cEF(y)).sum()).item() or 0) for y in yrs_disp]
+            pv = [float(pf.select(pl.col(cPF(y)).sum()).item() or 0) if cPF(y) in pf.columns else 0 for y in yrs_disp]
+            fig_a = go.Figure()
+            fig_a.add_trace(go.Bar(name="Programacion",x=yrs_disp,y=pv,marker_color=C["cyan"],opacity=.75))
+            fig_a.add_trace(go.Bar(name="Ejecucion",x=yrs_disp,y=ev,marker_color=C["azul"]))
+            fig_a.update_layout(barmode="group",height=350,paper_bgcolor="white",plot_bgcolor="#fafafa",
+                font={"family":"DM Sans"},legend=dict(orientation="h",y=1.1),margin=dict(t=20,b=20))
+            st.plotly_chart(fig_a, width="stretch", key="bar_acum_a")
+
+            # Por linea acumulado
+            sec("Ejecucion Financiera Acumulada por Linea")
+            if cL in pf.columns:
+                ef_acum_df = (
+                    pf.group_by(cL)
+                      .agg(*[pl.col(cEF(y)).sum() for y in yrs_disp],
+                           *[pl.col(cPF(y)).sum() for y in ["2024","2025","2026","2027"] if cPF(y) in pf.columns])
+                      .to_pandas()
+                )
+                ef_acum_df["Ejec_Acum"] = sum(ef_acum_df.get(cEF(y),0) for y in yrs_disp)
+                ef_acum_df["Prog_Cuat"] = sum(ef_acum_df.get(cPF(y),0) for y in ["2024","2025","2026","2027"] if cPF(y) in ef_acum_df.columns)
+                ef_acum_df["Pct_Acum"]  = ef_acum_df.apply(
+                    lambda r: r["Ejec_Acum"]/r["Prog_Cuat"] if r["Prog_Cuat"]>0 else 0, axis=1)
+                ef_acum_df = ef_acum_df.sort_values("Pct_Acum")
+                gt1,gt2 = st.tabs(["Grafico","Tabla"])
+                with gt1:
+                    barra_financiera(ef_acum_df,"Ejec_Acum","Prog_Cuat","Pct_Acum",cL,"Lineas - Acumulado","bfl_a")
+                with gt2:
+                    s = ef_acum_df[[cL,"Prog_Cuat","Ejec_Acum","Pct_Acum"]].copy()
+                    s.columns=["Linea","Prog. Cuatrienio","Ejec. Acumulada","% Avance Acumulado"]
+                    st.markdown(htable(s,col_pct=["% Avance Acumulado"],
+                                       col_money=["Prog. Cuatrienio","Ejec. Acumulada"]),unsafe_allow_html=True)
 
 # ================================================================
 # TAB 3: EJECUCION FISICA
 # ================================================================
 with tab3:
-    # ── Calculo base: avance_vigencia_lineas del notebook ────────
-    # Las 4 columnas solicitadas:
-    # % Aporte Cumplimiento PDD | Nro Indicadores Programados |
-    # Sobre Nro Total Indicadores | % Eficacia Operativa
-    def calcular_avance_fisico(pf_src, group_col, n_prog_total, all_rows=False):
-        """
-        Replica avance_vigencia_lineas / avance_vigencia_sectores del notebook.
-        all_rows=False: solo metas con programacion en la vigencia (n_prog_total como denominador).
-        Retorna DataFrame pandas con las 4 columnas del notebook.
-        """
-        if n_prog_total == 0:
-            return pd.DataFrame()
-
-        # Promedio de avance por programa
-        prom_prog = (
-            pf_src.filter(pl.col(CM).fill_null(0) != 0)
-                  .group_by("Programa PDD")
-                  .agg(pl.col(CP).fill_null(0).mean().alias("prom"),
-                       pl.col("Codigo Meta").len().alias("n_p"))
-                  .with_columns((pl.col("n_p") / n_prog_total).alias("peso"))
-        )
-
-        # Agrupar por la columna solicitada (linea o sector)
-        result = (
-            pf_src.filter(pl.col(CM).fill_null(0) != 0)
-                  .group_by([group_col, "Programa PDD"])
-                  .agg(pl.col("Codigo Meta").len().alias("n_ind"))
-                  .join(prom_prog.select(["Programa PDD", "prom", "peso"]),
-                        on="Programa PDD", how="left")
-                  .with_columns(pl.col("prom").fill_null(0))
-                  .group_by(group_col)
-                  .agg(
-                      (pl.col("prom") * pl.col("peso")).sum().alias("Aporte"),
-                      pl.col("n_ind").sum().alias("N Indicadores"),
-                  )
-                  .with_columns(
-                      (pl.col("N Indicadores") / n_prog_total)
-                        .alias("Peso"),
-                  )
-                  # Eficacia Operativa: Aporte / Peso (normaliza el aporte al peso de la linea)
-                  .with_columns(
-                      pl.when(pl.col("Peso") == 0)
-                        .then(0.0)
-                        .otherwise(pl.col("Aporte") / pl.col("Peso"))
-                        .alias("Eficacia Operativa"),
-                  )
-                  .sort("Eficacia Operativa", descending=False)
-                  .to_pandas()
-        )
-        result.columns = [group_col,
-                          "% Aporte Cumplimiento PDD",
-                          "Nro Indicadores Programados",
-                          "Sobre Nro Total de Indicadores",
-                          "% Eficacia Operativa"]
-        return result
-
-    # ── Lineas ───────────────────────────────────────────────────
-    sec(f"Eficacia Operativa por Linea Estrategica - {vig}")
-    if CP in pf.columns and cL in pf.columns and CM in pf.columns and n_prog > 0:
-        df_lin = calcular_avance_fisico(pf, cL, n_prog)
-
-        if not df_lin.empty:
-            gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
-            with gtab1:
-                fig_fl = go.Figure(go.Bar(
-                    x=df_lin["% Eficacia Operativa"] * 100,
-                    y=df_lin[cL],
-                    orientation="h",
-                    marker_color=[semaforo_color(v) for v in df_lin["% Eficacia Operativa"]],
-                    text=[fmt_pct(v) for v in df_lin["% Eficacia Operativa"]],
-                    textposition="outside",
-                    customdata=df_lin[["Nro Indicadores Programados",
-                                       "% Aporte Cumplimiento PDD"]].values,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>"
-                        "Eficacia Operativa: %{text}<br>"
-                        "Indicadores programados: %{customdata[0]}<br>"
-                        "Aporte al cumplimiento PDD: %{customdata[1]:.1%}<extra></extra>"
-                    ),
-                ))
-                fig_fl.update_layout(
-                    xaxis_title="% Eficacia Operativa",
-                    height=max(320, len(df_lin) * 50),
-                    paper_bgcolor="white", plot_bgcolor="#fafafa",
-                    font={"family": "DM Sans"},
-                    margin=dict(l=20, r=100, t=30, b=20),
-                )
-                st.plotly_chart(fig_fl, width="stretch", key="bar_fl")
-                st.caption(
-                    f"Eficacia Operativa: que tan bien ejecuto la linea sus metas programadas "
-                    f"en {vig}, ajustado por el peso de cada programa sobre el total de metas programadas."
-                )
-            with gtab2:
-                df_lin_show = df_lin.copy()
-                df_lin_show = df_lin_show.sort_values("% Eficacia Operativa", ascending=False)
-                st.markdown(html_table(
-                    df_lin_show,
-                    col_pct=["% Aporte Cumplimiento PDD",
-                              "Sobre Nro Total de Indicadores",
-                              "% Eficacia Operativa"],
-                    tooltips={
-                        "% Aporte Cumplimiento PDD":
-                            "Suma ponderada del avance de cada programa, "
-                            "usando como peso la proporcion de sus metas programadas sobre el total de la vigencia.",
-                        "Nro Indicadores Programados":
-                            f"Cantidad de indicadores con Meta Fisica Esperada > 0 en {vig}.",
-                        "Sobre Nro Total de Indicadores":
-                            "Nro Indicadores Programados / Total de metas programadas en la vigencia. "
-                            "Indica el peso relativo de esta linea.",
-                        "% Eficacia Operativa":
-                            "% Aporte Cumplimiento PDD / Sobre Nro Total de Indicadores. "
-                            "Mide que tan bien ejecuto la linea sus metas respecto a su peso.",
-                    }
-                ), unsafe_allow_html=True)
+    if pond_vig_f is None and pond_cuat_f is None:
+        st.info("No hay datos de ejecucion fisica disponibles.")
     else:
-        st.info("No hay columnas de ejecucion fisica disponibles para esta vigencia.")
+        ft1,ft2 = st.tabs([f"Vigencia {vig}", "Cuatrienio Acumulado"])
 
-    # ── Sectores ─────────────────────────────────────────────────
-    sec(f"Eficacia Operativa por Sector PDD - {vig}")
-    if CP in pf.columns and "Sector PDD" in pf.columns and CM in pf.columns and n_prog > 0:
-        df_sec = calcular_avance_fisico(pf, "Sector PDD", n_prog)
+        def mostrar_grupo_fisico(group_col, label, pond_v, pond_c, n_p, n_t, tab_key_suf, es_vig_sel):
+            df = eficacia_grupo(pond_v, pond_c, n_p, n_t, group_col, es_vig_sel)
+            if df is None or df.empty:
+                st.info(f"No hay datos para {label}.")
+                return
+            gt1,gt2 = st.tabs(["Grafico","Tabla"])
+            with gt1:
+                barra_horizontal(df,"% Avance de la Ejecucion Fisica",group_col,
+                    f"{label} - {'Vigencia '+vig if es_vig_sel else 'Cuatrienio'}",
+                    f"bar_{tab_key_suf}")
+                tip = (f"Replica avance_vigencia del notebook: Aporte / Peso donde "
+                       f"Aporte = suma(promedio_avance_programa * peso_programa) y "
+                       f"Peso = metas_prog_grupo / total_metas_prog_{vig}.")
+                st.caption(tip)
+            with gt2:
+                df_s = df.copy().sort_values("% Avance de la Ejecucion Fisica",ascending=False)
+                st.markdown(htable(df_s, col_pct=["% Avance de la Ejecucion Fisica"],
+                    tooltips={"% Avance de la Ejecucion Fisica":
+                        "Eficacia Operativa del notebook: "
+                        "sum(promedio_programa * peso_programa) / peso_grupo. "
+                        "Superior >= 100% | Alto 60-99% | Medio 30-59% | Minimo < 30%"}),
+                    unsafe_allow_html=True)
 
-        if not df_sec.empty:
-            gtab1, gtab2 = st.tabs(["Grafico", "Tabla"])
-            with gtab1:
-                fig_sf = go.Figure(go.Bar(
-                    x=df_sec["% Eficacia Operativa"] * 100,
-                    y=df_sec["Sector PDD"],
-                    orientation="h",
-                    marker_color=[semaforo_color(v) for v in df_sec["% Eficacia Operativa"]],
-                    text=[fmt_pct(v) for v in df_sec["% Eficacia Operativa"]],
-                    textposition="outside",
-                    customdata=df_sec[["Nro Indicadores Programados",
-                                       "% Aporte Cumplimiento PDD"]].values,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>"
-                        "Eficacia Operativa: %{text}<br>"
-                        "Indicadores programados: %{customdata[0]}<br>"
-                        "Aporte al cumplimiento PDD: %{customdata[1]:.1%}<extra></extra>"
-                    ),
-                ))
-                fig_sf.update_layout(
-                    xaxis_title="% Eficacia Operativa",
-                    height=max(320, len(df_sec) * 50),
-                    paper_bgcolor="white", plot_bgcolor="#fafafa",
-                    font={"family": "DM Sans"},
-                    margin=dict(l=20, r=100, t=30, b=20),
-                )
-                st.plotly_chart(fig_sf, width="stretch", key="bar_sf_fis")
-            with gtab2:
-                df_sec_show = df_sec.copy()
-                df_sec_show = df_sec_show.sort_values("% Eficacia Operativa", ascending=False)
-                st.markdown(html_table(
-                    df_sec_show,
-                    col_pct=["% Aporte Cumplimiento PDD",
-                              "Sobre Nro Total de Indicadores",
-                              "% Eficacia Operativa"],
-                    tooltips={
-                        "% Aporte Cumplimiento PDD":
-                            "Suma ponderada del avance de los programas del sector, "
-                            "usando como peso la proporcion de sus metas programadas.",
-                        "Nro Indicadores Programados":
-                            f"Indicadores del sector con Meta Fisica Esperada > 0 en {vig}.",
-                        "Sobre Nro Total de Indicadores":
-                            "Peso relativo del sector sobre el total de metas programadas en la vigencia.",
-                        "% Eficacia Operativa":
-                            "% Aporte / Sobre Nro Total de Indicadores. "
-                            "Normaliza el cumplimiento por el peso del sector.",
-                    }
-                ), unsafe_allow_html=True)
+        with ft1:
+            sec(f"Avance Fisico por Linea Estrategica - Vigencia {vig}")
+            mostrar_grupo_fisico(cL,"Lineas",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"lin_v",True)
+            sec(f"Avance Fisico por Sector PDD - Vigencia {vig}")
+            mostrar_grupo_fisico("Sector PDD","Sectores",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"sec_v",True)
+            sec(f"Avance Fisico por Programa PDD - Vigencia {vig}")
+            mostrar_grupo_fisico("Programa PDD","Programas",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"prg_v",True)
 
-    # Tabla completa de metas
-    sec("Detalle de Metas PDD")
-    dcols = [c for c in ["Codigo Meta", cL, "Sector PDD", "Programa PDD", "Responsable",
-                          CM, CP, COL_PCT_ACUM] if c in pf.columns]
-    tbl = pf.select(dcols).to_pandas()
-    for pc in [CP, COL_PCT_ACUM]:
-        if pc in tbl.columns:
-            tbl[pc] = tbl[pc].fillna(0)
-    st.markdown(html_table(tbl,
-        col_pct=[CP, COL_PCT_ACUM] if COL_PCT_ACUM in tbl.columns else [CP],
-        tooltips={
-            CP: f"PORCENTAJE DE EJECUCION {vig} del indicador (0.92 = 92%). "
-                "El pill muestra la semaforización institucional.",
-            COL_PCT_ACUM: "Avance acumulado frente a la meta total del cuatrienio 2024-2027.",
-            CM: f"Meta Fisica Esperada en {vig} para este indicador.",
-        }),
-        unsafe_allow_html=True)
+            # Tabla detalle de metas
+            sec("Detalle de Metas PDD")
+            dcols = [c for c in ["Codigo Meta",cL,"Sector PDD","Programa PDD","Responsable",CM,CP,CPAC] if c in pf.columns]
+            tbl = pf.select(dcols).to_pandas()
+            for pc in [CP,CPAC]:
+                if pc in tbl.columns: tbl[pc] = tbl[pc].fillna(0)
+            st.markdown(htable(tbl, col_pct=[c for c in [CP,CPAC] if c in tbl.columns],
+                tooltips={CP:f"PORCENTAJE DE EJECUCION {vig} (0.92 = 92%). Pill = semaforización.",
+                          CPAC:"Avance acumulado frente a meta cuatrienal."}),
+                unsafe_allow_html=True)
+
+        with ft2:
+            sec("Avance Fisico por Linea Estrategica - Cuatrienio")
+            mostrar_grupo_fisico(cL,"Lineas",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"lin_c",False)
+            sec("Avance Fisico por Sector PDD - Cuatrienio")
+            mostrar_grupo_fisico("Sector PDD","Sectores",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"sec_c",False)
+            sec("Avance Fisico por Programa PDD - Cuatrienio")
+            mostrar_grupo_fisico("Programa PDD","Programas",pond_vig_f,pond_cuat_f,n_prog_f,n_total_f,"prg_c",False)
 
 # ================================================================
 # TAB 4: POR DEPENDENCIA
 # ================================================================
 with tab4:
-    sec(f"Avance por Dependencia Responsable - {vig}")
-
+    sec(f"Avance por Dependencia Responsable - {periodo_label}")
     if CP not in pf.columns or CM not in pf.columns:
-        st.info("No hay datos suficientes para mostrar el avance por dependencia.")
+        st.info("No hay datos de dependencias disponibles.")
     else:
-        # avance_por_dependencia del notebook
+        # ejecucion_por_dependencia del notebook
+        ejec_dep_acum = (
+            pff.select(pl.col("Responsable").str.strip_chars(), CPAC)
+               .group_by("Responsable")
+               .agg(pl.col(CPAC).fill_null(0).mean().alias("Pct_Acum"))
+            if CPAC in pff.columns else None
+        )
+
         cat_e = (pl.when(pl.col(CCA)=="Superior").then(1).otherwise(0).alias("Sup")
                  if CCA in pf.columns else pl.lit(0).alias("Sup"))
-        acum_e = (pl.col(COL_PCT_ACUM).fill_null(0).mean().alias("Ejec_Acum")
-                  if COL_PCT_ACUM in pf.columns else pl.lit(0.0).alias("Ejec_Acum"))
 
-        dep = (pf.filter(pl.col(CM).fill_null(0)!=0)
-                 .with_columns(cat_e, pl.lit(1).alias("mp"))
-                 .group_by(pl.col("Responsable").str.strip_chars())
-                 .agg(pl.col(CP).fill_null(0).mean().alias("Avance"),
-                      pl.col("mp").sum().alias("N Metas"),
-                      pl.col("Sup").sum().alias("N Superiores"),
-                      acum_e))
+        dep = (
+            pf.filter(pl.col(CM).fill_null(0)!=0)
+              .with_columns(cat_e, pl.lit(1).alias("mp"))
+              .group_by(pl.col("Responsable").str.strip_chars())
+              .agg(pl.col(CP).fill_null(0).mean().alias("Avance"),
+                   pl.col("mp").sum().alias("N Metas"),
+                   pl.col("Sup").sum().alias("N Superiores"))
+        )
+        if ejec_dep_acum is not None:
+            dep = dep.join(ejec_dep_acum, on="Responsable", how="left")
+            dep = dep.with_columns(pl.col("Pct_Acum").fill_null(0))
+        else:
+            dep = dep.with_columns(pl.lit(0.0).alias("Pct_Acum"))
 
+        # Homologacion
         if hom is not None:
             rc = next((c for c in hom.columns if "Responsable" in c and "PI" in c), None)
-            if rc: dep = dep.join(hom.rename({rc:"Responsable"}), on="Responsable", how="left")
+            if rc:
+                dep = dep.join(hom.rename({rc:"Responsable"}), on="Responsable", how="left")
 
         dep_pd = dep.to_pandas()
-        if dep_pd.empty:
-            st.info("No se encontraron datos.")
-        else:
-            dep_pd["Avance"]     = dep_pd["Avance"].fillna(0)
-            dep_pd["Ejec_Acum"]  = dep_pd["Ejec_Acum"].fillna(0)
-            name_c = "Dependencia Responsable" if "Dependencia Responsable" in dep_pd.columns else "Responsable"
-            dep_s  = dep_pd.sort_values("Avance",ascending=True)
+        dep_pd["Avance"]   = dep_pd["Avance"].fillna(0)
+        dep_pd["Pct_Acum"] = dep_pd["Pct_Acum"].fillna(0)
+        name_c = "Dependencia Responsable" if "Dependencia Responsable" in dep_pd.columns else "Responsable"
+        dep_s  = dep_pd.sort_values("Avance", ascending=True)
 
-            gtab1,gtab2 = st.tabs(["Grafico","Tabla"])
-            with gtab1:
-                fig_dep = go.Figure(go.Bar(
-                    x=dep_s["Avance"]*100, y=dep_s[name_c], orientation="h",
-                    marker_color=[semaforo_color(v) for v in dep_s["Avance"]],
-                    text=[fmt_pct(v) for v in dep_s["Avance"]], textposition="outside",
-                    customdata=dep_s[["N Metas","N Superiores","Ejec_Acum"]].values,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>"
-                        f"Avance {vig}: %{{x:.1f}}%<br>"
-                        "Metas programadas: %{customdata[0]}<br>"
-                        "Metas superiores: %{customdata[1]}<br>"
-                        "Avance acumulado: %{customdata[2]:.1%}<extra></extra>"),
-                ))
-                fig_dep.update_layout(xaxis_title=f"% Promedio Ejecucion {vig}",
-                    height=max(360,len(dep_s)*48), paper_bgcolor="white",
-                    plot_bgcolor="#fafafa", font={"family":"DM Sans"},
-                    margin=dict(l=20,r=100,t=30,b=20))
-                st.plotly_chart(fig_dep, width="stretch", key="bar_dep")
-                st.caption(
-                    f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas a cargo de cada dependencia. "
-                    "Metas superiores: indicadores con categoria 'Superior'. "
-                    "Avance acumulado: promedio del PORCENTAJE DE EJECUCION ACUMULADA (2024-2027)."
-                )
-            with gtab2:
-                tbl_dep = dep_pd[[name_c, "N Metas", "N Superiores", "Avance", "Ejec_Acum"]].copy()
-                tbl_dep.columns = ["Dependencia", "Metas Prog.", "Metas Superiores",
-                                    f"% Avance {vig}", "% Avance Acumulado"]
-                tbl_dep = tbl_dep.sort_values(f"% Avance {vig}", ascending=False).reset_index(drop=True)
-                st.markdown(html_table(tbl_dep,
-                    col_pct=[f"% Avance {vig}", "% Avance Acumulado"],
-                    tooltips={
-                        f"% Avance {vig}": f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas. "
-                                            "El pill muestra la semaforización institucional.",
-                        "% Avance Acumulado": "Promedio del PORCENTAJE DE EJECUCION ACUMULADA (cuatrienio completo).",
-                        "Metas Superiores": f"Metas con CATEGORIA DE EJECUCION FISICA {vig} igual a 'Superior'.",
-                    }),
-                    unsafe_allow_html=True)
+        ft1,ft2 = st.tabs([f"Vigencia {vig}","Cuatrienio Acumulado"])
+        with ft1:
+            fig_dep = go.Figure(go.Bar(
+                x=dep_s["Avance"]*100, y=dep_s[name_c], orientation="h",
+                marker_color=[sem_color(v) for v in dep_s["Avance"]],
+                text=[fmt_pct(v) for v in dep_s["Avance"]], textposition="outside",
+                customdata=dep_s[["N Metas","N Superiores","Pct_Acum"]].values,
+                hovertemplate=(f"<b>%{{y}}</b><br>Avance {vig}: %{{text}}<br>"
+                               "Metas programadas: %{customdata[0]}<br>"
+                               "Metas superiores: %{customdata[1]}<br>"
+                               "Avance acumulado: %{customdata[2]:.1%}<extra></extra>"),
+            ))
+            fig_dep.update_layout(xaxis_title=f"% Avance {vig}",xaxis_range=[0,130],
+                height=max(360,len(dep_s)*52),paper_bgcolor="white",plot_bgcolor="#fafafa",
+                font={"family":"DM Sans"},margin=dict(l=20,r=110,t=30,b=20))
+            st.plotly_chart(fig_dep, width="stretch", key="bar_dep_v")
+            st.caption(f"Promedio del PORCENTAJE DE EJECUCION {vig} de las metas programadas a cargo de cada dependencia.")
 
-# ------------------------------------------------------------------
-# ARCHIVOS FALTANTES 2026
-# ------------------------------------------------------------------
+            tbl_d = dep_pd[[name_c,"N Metas","N Superiores","Avance","Pct_Acum"]].copy()
+            tbl_d.columns=["Dependencia","Metas Prog.",f"Superiores {vig}",f"% Avance {vig}","% Avance Acumulado"]
+            tbl_d = tbl_d.sort_values(f"% Avance {vig}", ascending=False).reset_index(drop=True)
+            st.markdown(htable(tbl_d,col_pct=[f"% Avance {vig}","% Avance Acumulado"],
+                tooltips={f"% Avance {vig}":f"Promedio PORCENTAJE DE EJECUCION {vig} de metas programadas.",
+                          "% Avance Acumulado":"Promedio PORCENTAJE DE EJECUCION ACUMULADA (cuatrienio).",
+                          f"Superiores {vig}":f"Metas con CATEGORIA DE EJECUCION FISICA = 'Superior' en {vig}."}),
+                unsafe_allow_html=True)
+
+        with ft2:
+            dep_cuat = dep_pd.sort_values("Pct_Acum", ascending=True)
+            fig_dc = go.Figure(go.Bar(
+                x=dep_cuat["Pct_Acum"]*100, y=dep_cuat[name_c], orientation="h",
+                marker_color=[sem_color(v) for v in dep_cuat["Pct_Acum"]],
+                text=[fmt_pct(v) for v in dep_cuat["Pct_Acum"]], textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Avance acumulado: %{text}<extra></extra>",
+            ))
+            fig_dc.update_layout(xaxis_title="% Avance Acumulado Cuatrienio",xaxis_range=[0,130],
+                height=max(360,len(dep_cuat)*52),paper_bgcolor="white",plot_bgcolor="#fafafa",
+                font={"family":"DM Sans"},margin=dict(l=20,r=110,t=30,b=20))
+            st.plotly_chart(fig_dc, width="stretch", key="bar_dep_c")
+            st.caption("Promedio del PORCENTAJE DE EJECUCION ACUMULADA por dependencia (sin filtro de meta programada en la vigencia, replicando el notebook).")
+
+# ──────────────────────────────────────────────────────────────────
+# ERRORES OPCIONALES
+# ──────────────────────────────────────────────────────────────────
 miss = []
 if h26_b is None: miss.append(("Hacienda 2026","Hacienda 2026"))
 if r26_b is None: miss.append(("Regalias 2026","Regalias 2026"))
 if miss:
-    with st.expander("Archivos 2026 no cargados - datos financieros incompletos", expanded=False):
+    with st.expander("Archivos 2026 no cargados", expanded=False):
         for nm,k in miss:
-            show_schema_error(nm, SCHEMAS[k]["cols"], SCHEMAS[k]["table"])
+            show_err(nm, SCHEMAS[k][1], SCHEMAS[k][0])
 
 st.markdown('<div class="footer">Dashboard de Avance PDD &middot; Streamlit &middot; Polars &middot; Plotly</div>',
             unsafe_allow_html=True)
