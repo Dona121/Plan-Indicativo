@@ -17,13 +17,11 @@ import requests
 # Paleta corporativa
 # =========================================================================
 COLORS = {
-    # Primarios (fila superior)
     "green_light":  "#17743d",
     "green_dark":   "#005931",
     "cyan":         "#47b1d5",
     "blue":         "#1754ab",
     "blue_dark":    "#003d6c",
-    # Secundarios cálidos (fila inferior)
     "orange":       "#d88c16",
     "orange_deep":  "#cf7000",
     "amber":        "#d37e00",
@@ -31,10 +29,14 @@ COLORS = {
     "coral":        "#e68878",
 }
 
-# Tipografías
-FONT_DISPLAY = "Fraunces"   # serif editorial con carácter institucional
-FONT_BODY    = "Archivo"    # sans refinada, legible para datos
-FONT_MONO    = "JetBrains Mono"
+# Fuentes oficiales:
+#   Alkaline  -> fuente de display / titulares (carácter institucional)
+#   Montserrat -> encabezados y UI
+#   Open Sans  -> cuerpo, datos, formularios
+FONT_DISPLAY = "Alkaline"
+FONT_HEADING = "Montserrat"
+FONT_BODY    = "Open Sans"
+FONT_MONO    = "JetBrains Mono"  # apoyo para metadatos pequeños
 
 # =========================================================================
 # Configuración de página
@@ -51,7 +53,18 @@ st.set_page_config(
 # =========================================================================
 CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400&family=Archivo:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Montserrat y Open Sans oficiales desde Google Fonts.
+   Alkaline no está disponible en Google Fonts, se carga desde un CDN libre;
+   si falla, el stack hace fallback a Montserrat + serif. */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Open+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@font-face {{
+    font-family: 'Alkaline';
+    src: url('https://cdn.jsdelivr.net/gh/gogolapse/fonts@main/Alkaline/Alkaline.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}}
 
 :root {{
     --green-light: {COLORS["green_light"]};
@@ -72,7 +85,7 @@ CSS = f"""
     --chip-bg:     #f1ede2;
 }}
 
-/* Fondo y tipografía base */
+/* Base tipográfica */
 html, body, [class*="css"], .stApp {{
     font-family: '{FONT_BODY}', system-ui, sans-serif !important;
     color: var(--ink);
@@ -85,16 +98,17 @@ html, body, [class*="css"], .stApp {{
         var(--paper);
 }}
 
-/* Encabezados */
+/* Encabezados H1..H6 con Montserrat (institucional, geométrica) */
 h1, h2, h3, h4, h5, h6 {{
-    font-family: '{FONT_DISPLAY}', Georgia, serif !important;
+    font-family: '{FONT_HEADING}', Helvetica, sans-serif !important;
     color: var(--ink);
     letter-spacing: -0.01em;
 }}
-h1 {{ font-weight: 700 !important; }}
-h2, h3 {{ font-weight: 600 !important; }}
+h1 {{ font-weight: 800 !important; }}
+h2, h3 {{ font-weight: 700 !important; }}
+h4, h5, h6 {{ font-weight: 600 !important; }}
 
-/* Barra superior / menú oculto */
+/* Menú y footer de Streamlit ocultos */
 #MainMenu, header [data-testid="stToolbar"], footer {{ visibility: hidden; }}
 header {{ background: transparent !important; }}
 
@@ -106,8 +120,9 @@ header {{ background: transparent !important; }}
 [data-testid="stSidebar"] * {{ color: #e9eef5 !important; }}
 [data-testid="stSidebar"] h1,
 [data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {{ color: #fff !important; }}
+[data-testid="stSidebar"] h3 {{ color: #fff !important; font-family: '{FONT_HEADING}', sans-serif !important; }}
 [data-testid="stSidebar"] label {{
+    font-family: '{FONT_HEADING}', sans-serif !important;
     font-size: 0.72rem !important;
     text-transform: uppercase;
     letter-spacing: 0.14em;
@@ -124,8 +139,9 @@ header {{ background: transparent !important; }}
     color: #fff !important;
     border: none !important;
     border-radius: 2px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.06em !important;
+    font-family: '{FONT_HEADING}', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
     font-size: 0.75rem !important;
     transition: background 0.2s ease;
@@ -133,8 +149,16 @@ header {{ background: transparent !important; }}
 [data-testid="stSidebar"] button:hover {{
     background: var(--amber) !important;
 }}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {{
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px dashed rgba(255,255,255,0.25) !important;
+    border-radius: 2px !important;
+}}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small {{
+    color: #b9c6d6 !important;
+}}
 
-/* Tarjetas de métrica */
+/* KPIs */
 [data-testid="stMetric"] {{
     background: #fff;
     border: 1px solid var(--hairline);
@@ -144,6 +168,7 @@ header {{ background: transparent !important; }}
     box-shadow: 0 1px 0 rgba(13,27,42,0.03);
 }}
 [data-testid="stMetric"] [data-testid="stMetricLabel"] {{
+    font-family: '{FONT_HEADING}', sans-serif !important;
     font-size: 0.68rem !important;
     text-transform: uppercase;
     letter-spacing: 0.16em;
@@ -151,11 +176,12 @@ header {{ background: transparent !important; }}
     font-weight: 600;
 }}
 [data-testid="stMetric"] [data-testid="stMetricValue"] {{
-    font-family: '{FONT_DISPLAY}', Georgia, serif !important;
-    font-weight: 600 !important;
-    font-size: 2rem !important;
+    font-family: '{FONT_DISPLAY}', '{FONT_HEADING}', Helvetica, sans-serif !important;
+    font-weight: 400 !important;
+    font-size: 2.2rem !important;
     color: var(--ink) !important;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
 }}
 [data-testid="stMetric"] [data-testid="stMetricDelta"] {{
     font-family: '{FONT_MONO}', monospace !important;
@@ -177,7 +203,7 @@ header {{ background: transparent !important; }}
     border-bottom: 2px solid transparent !important;
     border-radius: 0 !important;
     color: var(--ink-mute) !important;
-    font-family: '{FONT_BODY}', sans-serif !important;
+    font-family: '{FONT_HEADING}', sans-serif !important;
     font-size: 0.78rem !important;
     font-weight: 600 !important;
     text-transform: uppercase;
@@ -193,19 +219,29 @@ header {{ background: transparent !important; }}
     background: transparent !important;
 }}
 
-/* Dataframes */
-.stDataFrame {{
+/* Toggle gráfico/tabla */
+div[data-testid="stRadio"] > label {{
+    font-family: '{FONT_HEADING}', sans-serif !important;
+    font-size: 0.7rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-mute) !important;
+    font-weight: 600 !important;
+}}
+
+/* Tablas nativas de Streamlit */
+.stDataFrame, [data-testid="stDataFrame"] {{
     border: 1px solid var(--hairline);
     border-radius: 2px;
 }}
 
-/* Info, warning, error boxes */
+/* Alertas */
 .stAlert {{
     border-radius: 2px !important;
     border-left: 3px solid var(--blue) !important;
 }}
 
-/* Selects y inputs */
+/* Selects */
 [data-baseweb="select"] > div {{
     border-radius: 2px !important;
     border-color: var(--hairline) !important;
@@ -217,7 +253,8 @@ header {{ background: transparent !important; }}
     color: #fff !important;
     border: none !important;
     border-radius: 2px !important;
-    font-weight: 600 !important;
+    font-family: '{FONT_HEADING}', sans-serif !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.08em !important;
     font-size: 0.78rem !important;
@@ -245,11 +282,16 @@ header {{ background: transparent !important; }}
     margin-bottom: 0.4rem;
 }}
 .masthead h1 {{
-    font-size: 3.4rem !important;
+    font-family: '{FONT_DISPLAY}', '{FONT_HEADING}', Helvetica, sans-serif !important;
+    font-size: 4rem !important;
     line-height: 0.95 !important;
     margin: 0 !important;
-    font-weight: 700 !important;
-    font-style: italic;
+    font-weight: 400 !important;
+    color: var(--ink);
+}}
+.masthead h1 em {{
+    font-style: normal;
+    color: var(--orange-deep);
 }}
 .masthead .edition {{
     font-family: '{FONT_MONO}', monospace;
@@ -257,28 +299,32 @@ header {{ background: transparent !important; }}
     color: var(--ink-mute);
     text-align: right;
     letter-spacing: 0.08em;
-    line-height: 1.5;
+    line-height: 1.55;
 }}
 .masthead .edition strong {{
     color: var(--ink);
-    font-weight: 600;
+    font-weight: 700;
+    font-family: '{FONT_HEADING}', sans-serif;
+    letter-spacing: 0.06em;
 }}
 
 .subhead {{
-    font-size: 0.9rem;
+    font-family: '{FONT_BODY}', sans-serif;
+    font-size: 0.92rem;
     color: var(--ink-mute);
     font-style: italic;
     border-bottom: 1px solid var(--hairline);
     padding-bottom: 1.2rem;
     margin-bottom: 1.6rem;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
+    line-height: 1.5;
 }}
 
-/* Sección */
+/* Títulos de sección numerados */
 .section-title {{
-    font-family: '{FONT_DISPLAY}', Georgia, serif;
-    font-size: 1.6rem;
-    font-weight: 600;
+    font-family: '{FONT_HEADING}', sans-serif;
+    font-size: 1.7rem;
+    font-weight: 700;
     color: var(--ink);
     margin: 1.2rem 0 0.2rem 0;
     letter-spacing: -0.015em;
@@ -290,9 +336,11 @@ header {{ background: transparent !important; }}
     letter-spacing: 0.2em;
     vertical-align: middle;
     margin-right: 0.8rem;
+    font-weight: 500;
 }}
 .section-kicker {{
-    font-size: 0.8rem;
+    font-family: '{FONT_BODY}', sans-serif;
+    font-size: 0.83rem;
     color: var(--ink-mute);
     font-style: italic;
     margin-bottom: 1rem;
@@ -312,6 +360,7 @@ hr {{
     color: var(--ink-mute) !important;
     font-style: italic;
     font-size: 0.82rem !important;
+    font-family: '{FONT_BODY}', sans-serif !important;
 }}
 
 /* Plotly containers */
@@ -322,7 +371,7 @@ hr {{
     padding: 0.6rem;
 }}
 
-/* Radio sidebar */
+/* Radio del sidebar */
 [data-testid="stSidebar"] [role="radiogroup"] label {{
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1);
@@ -339,6 +388,116 @@ hr {{
     background: var(--blue-dark) !important;
     color: #fff !important;
     border-radius: 2px !important;
+    font-family: '{FONT_HEADING}', sans-serif !important;
+}}
+
+/* =====================================================================
+   Tabla institucional custom (.institutional-table)
+   ===================================================================== */
+.institutional-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-family: '{FONT_BODY}', sans-serif;
+    font-size: 0.85rem;
+    background: #fff;
+    border: 1px solid var(--hairline);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 0.3rem 0 1.2rem 0;
+}}
+.institutional-table thead tr {{
+    background: var(--blue-dark);
+}}
+.institutional-table thead th {{
+    font-family: '{FONT_HEADING}', sans-serif;
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 0.7rem;
+    text-align: left;
+    padding: 0.8rem 0.9rem;
+    border-bottom: 2px solid var(--orange-deep);
+    white-space: nowrap;
+}}
+.institutional-table thead th.num {{
+    text-align: right;
+}}
+.institutional-table tbody td {{
+    padding: 0.65rem 0.9rem;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--ink);
+    vertical-align: middle;
+}}
+.institutional-table tbody td.num {{
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: '{FONT_MONO}', monospace;
+    font-size: 0.82rem;
+    color: var(--ink);
+}}
+.institutional-table tbody tr:nth-child(even) {{
+    background: #faf8f2;
+}}
+.institutional-table tbody tr:hover {{
+    background: #f1ede2;
+}}
+.institutional-table tbody tr:last-child td {{
+    border-bottom: none;
+}}
+.institutional-table tfoot td {{
+    font-family: '{FONT_HEADING}', sans-serif;
+    font-weight: 700;
+    background: #f1ede2;
+    padding: 0.75rem 0.9rem;
+    border-top: 2px solid var(--blue-dark);
+    color: var(--blue-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.78rem;
+}}
+.institutional-table tfoot td.num {{
+    font-family: '{FONT_MONO}', monospace;
+    font-size: 0.82rem;
+    text-align: right;
+    color: var(--blue-dark);
+}}
+
+/* Barra de progreso inline en celdas de porcentaje */
+.pct-cell {{
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    justify-content: flex-end;
+}}
+.pct-cell .bar {{
+    position: relative;
+    width: 60px;
+    height: 6px;
+    background: var(--chip-bg);
+    border-radius: 1px;
+    overflow: hidden;
+    flex-shrink: 0;
+}}
+.pct-cell .bar > span {{
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: var(--blue);
+    border-radius: 1px;
+}}
+.pct-cell.low    .bar > span {{ background: var(--coral); }}
+.pct-cell.mid    .bar > span {{ background: var(--amber); }}
+.pct-cell.high   .bar > span {{ background: var(--green-light); }}
+.pct-cell.top    .bar > span {{ background: var(--green-dark); }}
+
+.pct-cell .value {{
+    font-family: '{FONT_MONO}', monospace;
+    font-size: 0.82rem;
+    min-width: 55px;
+    text-align: right;
+    color: var(--ink);
 }}
 </style>
 """
@@ -369,7 +528,7 @@ SCALE_GREEN = [
 corporate_template = go.layout.Template()
 corporate_template.layout = go.Layout(
     font=dict(family=f"{FONT_BODY}, sans-serif", color=COLORS["blue_dark"], size=12),
-    title=dict(font=dict(family=f"{FONT_DISPLAY}, Georgia, serif", size=16, color="#0d1b2a")),
+    title=dict(font=dict(family=f"{FONT_HEADING}, sans-serif", size=15, color="#0d1b2a")),
     paper_bgcolor="white",
     plot_bgcolor="white",
     colorway=CORPORATE_SEQUENCE,
@@ -394,7 +553,7 @@ pio.templates.default = "corporate"
 
 
 # =========================================================================
-# URLs GitHub
+# URLs GitHub (datos que siempre vienen del repo)
 # =========================================================================
 GH = {
     "pi":  "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/Plan%20Indicativo%202024-2027.xlsx",
@@ -405,6 +564,11 @@ GH = {
     "h26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20HACIENDA%20PRUEBA%202026.xlsx",
     "r26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/CG-cttos_04_marzo_20260304.xlsx",
 }
+
+# Vigencias cerradas (siempre se descargan del repo)
+ARCHIVOS_CERRADOS = ["h24", "r24", "h25", "r25"]
+# Archivos que el usuario puede actualizar manualmente
+ARCHIVOS_ACTUALIZABLES = ["pi", "h26", "r26"]
 
 # =========================================================================
 # Utilidades
@@ -435,6 +599,22 @@ def formato_porcentaje(valor):
         return valor
 
 
+def formato_pesos_completo(valor):
+    """Formato completo $ xxx,xxx,xxx para las tablas."""
+    try:
+        v = float(valor)
+        return f"$ {v:,.0f}"
+    except Exception:
+        return valor
+
+
+def formato_entero(valor):
+    try:
+        return f"{int(valor):,}"
+    except Exception:
+        return valor
+
+
 def seccion(numero: str, titulo: str, kicker: str = ""):
     st.markdown(
         f'<div class="section-title"><span class="num">{numero}</span>{titulo}</div>',
@@ -456,6 +636,122 @@ def programacion_financiera(vigencia: str):
         + pl.col("programación crédito" + vigencia)
         + pl.col("programación regalías" + vigencia)
         + pl.col("programación otras fuentes" + vigencia)
+    )
+
+
+# =========================================================================
+# Renderizador de tabla institucional
+# =========================================================================
+def pct_class(valor: float) -> str:
+    if pd.isna(valor) or valor is None:
+        return ""
+    v = float(valor)
+    if v < 0.25:  return "low"
+    if v < 0.5:   return "mid"
+    if v < 0.85:  return "high"
+    return "top"
+
+
+def render_table(df: pd.DataFrame, columnas: list, totales: dict = None):
+    """
+    Render de tabla institucional en HTML.
+    `columnas` es una lista de dict: {'key', 'label', 'type'}
+        type ∈ {'text', 'money', 'pct', 'int', 'pctbar'}
+    `totales` es un dict opcional {key: (value, type)} para la fila de total.
+    """
+    html = ['<table class="institutional-table">']
+
+    # Encabezado
+    html.append("<thead><tr>")
+    for col in columnas:
+        cls = "num" if col["type"] in ("money", "pct", "int", "pctbar") else ""
+        html.append(f'<th class="{cls}">{col["label"]}</th>')
+    html.append("</tr></thead>")
+
+    # Cuerpo
+    html.append("<tbody>")
+    for _, row in df.iterrows():
+        html.append("<tr>")
+        for col in columnas:
+            v = row.get(col["key"])
+            t = col["type"]
+            if t == "money":
+                cell = formato_pesos_completo(v) if pd.notna(v) else "—"
+                html.append(f'<td class="num">{cell}</td>')
+            elif t == "pct":
+                cell = formato_porcentaje(v) if pd.notna(v) else "—"
+                html.append(f'<td class="num">{cell}</td>')
+            elif t == "pctbar":
+                if pd.notna(v):
+                    pct = max(0.0, min(1.0, float(v)))
+                    klass = pct_class(v)
+                    bar = int(pct * 100)
+                    cell = (
+                        f'<div class="pct-cell {klass}">'
+                        f'<div class="bar"><span style="width:{bar}%"></span></div>'
+                        f'<div class="value">{v*100:.1f}%</div>'
+                        f'</div>'
+                    )
+                else:
+                    cell = '<div class="pct-cell"><div class="value">—</div></div>'
+                html.append(f'<td class="num">{cell}</td>')
+            elif t == "int":
+                cell = formato_entero(v) if pd.notna(v) else "—"
+                html.append(f'<td class="num">{cell}</td>')
+            else:
+                cell = "" if pd.isna(v) or v is None else str(v)
+                html.append(f"<td>{cell}</td>")
+        html.append("</tr>")
+    html.append("</tbody>")
+
+    # Totales
+    if totales:
+        html.append("<tfoot><tr>")
+        for i, col in enumerate(columnas):
+            if i == 0 and col["key"] not in totales:
+                html.append("<td>Total</td>")
+                continue
+            v = totales.get(col["key"])
+            if v is None:
+                cls = "num" if col["type"] in ("money", "pct", "int", "pctbar") else ""
+                html.append(f'<td class="{cls}"></td>')
+                continue
+            t = col["type"]
+            if t == "money":
+                html.append(f'<td class="num">{formato_pesos_completo(v)}</td>')
+            elif t == "pct" or t == "pctbar":
+                html.append(f'<td class="num">{formato_porcentaje(v)}</td>')
+            elif t == "int":
+                html.append(f'<td class="num">{formato_entero(v)}</td>')
+            else:
+                html.append(f"<td>{v}</td>")
+        html.append("</tr></tfoot>")
+
+    html.append("</table>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def render_vista(
+    tipo_vista: str,
+    fig_factory,
+    df_tabla: pd.DataFrame,
+    columnas: list,
+    totales: dict = None,
+):
+    """Renderiza gráfico o tabla según la selección del usuario."""
+    if tipo_vista == "Tabla":
+        render_table(df_tabla, columnas, totales)
+    else:
+        st.plotly_chart(fig_factory(), use_container_width=True)
+
+
+def selector_vista(key: str) -> str:
+    return st.radio(
+        "Vista",
+        options=["Gráfico", "Tabla"],
+        horizontal=True,
+        key=key,
+        label_visibility="collapsed",
     )
 
 
@@ -864,13 +1160,13 @@ st.sidebar.markdown(
                     color: {COLORS["orange"]}; text-transform: uppercase;'>
             Plan de Desarrollo
         </div>
-        <div style='font-family: {FONT_DISPLAY}, Georgia, serif; font-size: 1.5rem;
-                    font-weight: 700; color: #fff; line-height: 1; margin-top: 0.2rem;
-                    font-style: italic;'>
+        <div style='font-family: {FONT_DISPLAY}, {FONT_HEADING}, sans-serif; font-size: 2rem;
+                    font-weight: 400; color: #fff; line-height: 1; margin-top: 0.25rem;'>
             2024<span style='color: {COLORS["orange"]}'>—</span>2027
         </div>
-        <div style='font-family: {FONT_BODY}, sans-serif; font-size: 0.75rem;
-                    color: #b9c6d6; margin-top: 0.4rem; letter-spacing: 0.04em;'>
+        <div style='font-family: {FONT_HEADING}, sans-serif; font-size: 0.7rem;
+                    color: #b9c6d6; margin-top: 0.5rem; letter-spacing: 0.14em;
+                    text-transform: uppercase; font-weight: 500;'>
             Sistema de Seguimiento
         </div>
     </div>
@@ -878,42 +1174,80 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.markdown("### Origen de los datos")
-fuente = st.sidebar.radio(
-    "Fuente",
-    options=["Repositorio GitHub", "Cargar archivos"],
+st.sidebar.markdown("### Archivos actualizables")
+st.sidebar.markdown(
+    f"""
+    <div style='font-family: {FONT_BODY}, sans-serif; font-size: 0.78rem;
+                color: #b9c6d6; margin: -0.4rem 0 0.8rem 0; line-height: 1.5;'>
+        Las vigencias 2024 y 2025 ya cerraron y se consultan del repositorio.
+        Sube aquí los archivos de 2026 y el Plan Indicativo.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+modo_carga = st.sidebar.radio(
+    "Modo",
+    options=["Usar datos del repositorio", "Subir archivos 2026 y Plan Indicativo"],
     index=0,
     label_visibility="collapsed",
 )
 
 archivos_bytes = {}
 
-if fuente == "Repositorio GitHub":
-    if st.sidebar.button("Recargar datos", use_container_width=True):
+# Vigencias cerradas: siempre del repo
+try:
+    with st.spinner("Cargando vigencias cerradas (2024-2025)..."):
+        for key in ARCHIVOS_CERRADOS:
+            archivos_bytes[key] = descargar_desde_github(GH[key])
+except Exception as e:
+    st.sidebar.error(f"Error al cargar vigencias cerradas: {e}")
+    st.stop()
+
+# Archivos actualizables
+if modo_carga == "Usar datos del repositorio":
+    if st.sidebar.button("Recargar datos del repositorio", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     try:
-        with st.spinner("Descargando archivos del repositorio..."):
-            for key, url in GH.items():
-                archivos_bytes[key] = descargar_desde_github(url)
+        with st.spinner("Descargando Plan Indicativo y archivos 2026..."):
+            for key in ARCHIVOS_ACTUALIZABLES:
+                archivos_bytes[key] = descargar_desde_github(GH[key])
     except Exception as e:
         st.sidebar.error(f"Error al descargar: {e}")
         st.stop()
 else:
-    st.sidebar.markdown("**Archivos requeridos**")
-    uploads = {
-        "pi": st.sidebar.file_uploader("Plan Indicativo", type=["xlsx"], key="pi"),
-        "h24": st.sidebar.file_uploader("Hacienda 2024", type=["xlsx"], key="h24"),
-        "r24": st.sidebar.file_uploader("Regalías 2024", type=["xlsx"], key="r24"),
-        "h25": st.sidebar.file_uploader("Hacienda 2025", type=["xlsx"], key="h25"),
-        "r25": st.sidebar.file_uploader("Regalías 2025", type=["xlsx"], key="r25"),
-        "h26": st.sidebar.file_uploader("Hacienda 2026", type=["xlsx"], key="h26"),
-        "r26": st.sidebar.file_uploader("Regalías 2026", type=["xlsx"], key="r26"),
-    }
-    if not all(uploads.values()):
-        st.warning("Sube los siete archivos en la barra lateral para continuar.")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Plan Indicativo**")
+    pi_file = st.sidebar.file_uploader(
+        "Plan Indicativo 2024-2027",
+        type=["xlsx"], key="pi_upload",
+        label_visibility="collapsed",
+    )
+
+    st.sidebar.markdown("**Hacienda 2026**")
+    h26_file = st.sidebar.file_uploader(
+        "Ejecución Hacienda 2026",
+        type=["xlsx"], key="h26_upload",
+        label_visibility="collapsed",
+    )
+
+    st.sidebar.markdown("**Regalías 2026**")
+    r26_file = st.sidebar.file_uploader(
+        "Pagos Regalías 2026",
+        type=["xlsx"], key="r26_upload",
+        label_visibility="collapsed",
+    )
+
+    if not (pi_file and h26_file and r26_file):
+        st.warning(
+            "Sube los tres archivos requeridos: Plan Indicativo, Hacienda 2026 y Regalías 2026."
+        )
         st.stop()
-    archivos_bytes = {k: v.getvalue() for k, v in uploads.items()}
+
+    archivos_bytes["pi"]  = pi_file.getvalue()
+    archivos_bytes["h26"] = h26_file.getvalue()
+    archivos_bytes["r26"] = r26_file.getvalue()
 
 # Procesamiento
 try:
@@ -1014,71 +1348,87 @@ with tab1:
     st.markdown(" ")
     sub_v, sub_c = st.tabs([f"Vigencia {filtro_vigencia}", "Cuatrienio"])
 
-    def grafica_lineas(df, titulo, color_scale):
-        df = df.sort_values("% Eficacia Operativa", ascending=True)
+    def fig_bar_horizontal(df, cat_col, val_col, titulo, color_scale):
+        df2 = df.sort_values(val_col, ascending=True)
         fig = px.bar(
-            df, x="% Eficacia Operativa", y="Línea Estratégica",
-            orientation="h", text="% Eficacia Operativa",
-            color="% Eficacia Operativa", color_continuous_scale=color_scale,
+            df2, x=val_col, y=cat_col,
+            orientation="h", text=val_col,
+            color=val_col, color_continuous_scale=color_scale,
             title=titulo,
         )
         fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
                           marker_line_color=COLORS["blue_dark"], marker_line_width=0.5)
-        fig.update_layout(xaxis_tickformat=".0%", height=480, showlegend=False,
-                          coloraxis_showscale=False, bargap=0.35)
-        return fig
-
-    def grafica_sectores(df, titulo, color_scale):
-        df = df.sort_values("% Eficacia Operativa", ascending=True)
-        fig = px.bar(
-            df, x="% Eficacia Operativa", y="Sector PDD",
-            orientation="h", text="% Eficacia Operativa",
-            color="% Eficacia Operativa", color_continuous_scale=color_scale,
-            title=titulo,
-        )
-        fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
-                          marker_line_color=COLORS["blue_dark"], marker_line_width=0.5)
-        fig.update_layout(xaxis_tickformat=".0%", height=max(500, len(df) * 30),
+        fig.update_layout(xaxis_tickformat=".0%",
+                          height=max(450, len(df2) * 32),
                           showlegend=False, coloraxis_showscale=False, bargap=0.3)
         return fig
 
+    columnas_lineas = [
+        {"key": "Línea Estratégica", "label": "Línea Estratégica", "type": "text"},
+        {"key": "% Aporte Cumplimiento PDD", "label": "Aporte PDD", "type": "pct"},
+        {"key": "Sobre Numero Total de Indicadores", "label": "Peso relativo", "type": "pct"},
+        {"key": "% Eficacia Operativa", "label": "Eficacia Operativa", "type": "pctbar"},
+    ]
+    columnas_sectores = [
+        {"key": "Sector PDD", "label": "Sector PDD", "type": "text"},
+        {"key": "% Aporte Cumplimiento PDD", "label": "Aporte PDD", "type": "pct"},
+        {"key": "Sobre Numero Total de Indicadores", "label": "Peso relativo", "type": "pct"},
+        {"key": "% Eficacia Operativa", "label": "Eficacia Operativa", "type": "pctbar"},
+    ]
+
     with sub_v:
         st.markdown("##### Por Línea Estratégica")
+        vista = selector_vista("vista_fis_vig_lineas")
         df = avances_fisicos["avance_vig_lineas"].to_pandas()
         if not df.empty:
-            st.plotly_chart(
-                grafica_lineas(df, f"Eficacia Operativa por Línea Estratégica — {filtro_vigencia}", SCALE_BLUE),
-                use_container_width=True,
+            render_vista(
+                vista,
+                fig_factory=lambda: fig_bar_horizontal(
+                    df, "Línea Estratégica", "% Eficacia Operativa",
+                    f"Eficacia Operativa por Línea Estratégica — {filtro_vigencia}", SCALE_BLUE),
+                df_tabla=df,
+                columnas=columnas_lineas,
             )
-            st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Sin datos para la vigencia seleccionada.")
 
         st.markdown("##### Por Sector PDD")
+        vista = selector_vista("vista_fis_vig_sectores")
         df = avances_fisicos["avance_vig_sectores"].to_pandas()
         if not df.empty:
-            st.plotly_chart(
-                grafica_sectores(df, f"Eficacia Operativa por Sector PDD — {filtro_vigencia}", SCALE_BLUE),
-                use_container_width=True,
+            render_vista(
+                vista,
+                fig_factory=lambda: fig_bar_horizontal(
+                    df, "Sector PDD", "% Eficacia Operativa",
+                    f"Eficacia Operativa por Sector PDD — {filtro_vigencia}", SCALE_BLUE),
+                df_tabla=df,
+                columnas=columnas_sectores,
             )
-            st.dataframe(df, use_container_width=True, hide_index=True)
 
     with sub_c:
         st.markdown("##### Por Línea Estratégica")
+        vista = selector_vista("vista_fis_cuatri_lineas")
         df = avances_fisicos["avance_cuatri_lineas"].to_pandas()
-        st.plotly_chart(
-            grafica_lineas(df, "Eficacia Operativa por Línea Estratégica — Cuatrienio", SCALE_GREEN),
-            use_container_width=True,
+        render_vista(
+            vista,
+            fig_factory=lambda: fig_bar_horizontal(
+                df, "Línea Estratégica", "% Eficacia Operativa",
+                "Eficacia Operativa por Línea Estratégica — Cuatrienio", SCALE_GREEN),
+            df_tabla=df,
+            columnas=columnas_lineas,
         )
-        st.dataframe(df, use_container_width=True, hide_index=True)
 
         st.markdown("##### Por Sector PDD")
+        vista = selector_vista("vista_fis_cuatri_sectores")
         df = avances_fisicos["avance_cuatri_sectores"].to_pandas()
-        st.plotly_chart(
-            grafica_sectores(df, "Eficacia Operativa por Sector PDD — Cuatrienio", SCALE_GREEN),
-            use_container_width=True,
+        render_vista(
+            vista,
+            fig_factory=lambda: fig_bar_horizontal(
+                df, "Sector PDD", "% Eficacia Operativa",
+                "Eficacia Operativa por Sector PDD — Cuatrienio", SCALE_GREEN),
+            df_tabla=df,
+            columnas=columnas_sectores,
         )
-        st.dataframe(df, use_container_width=True, hide_index=True)
 
 # -----------------------------------------------------------------
 # 02. EJECUCIÓN FINANCIERA
@@ -1095,71 +1445,162 @@ with tab2:
         k2.metric("Ejecución", formato_pesos(ejec_vig))
         k3.metric("Avance", formato_porcentaje(pct_vig))
 
+        # --- Por clasificación de recursos ---
         st.markdown("##### Por Clasificación de Recursos")
+        vista = selector_vista("vista_fin_vig_tipo")
         df_tipo = ejec_financ_tipo.to_pandas()
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            name="Programación", x=df_tipo["Clasificación Recursos"],
-            y=df_tipo[f"Programación Financiera {filtro_vigencia}"],
-            marker=dict(color=COLORS["blue_dark"], line=dict(color="#fff", width=1)),
-        ))
-        fig.add_trace(go.Bar(
-            name="Ejecución", x=df_tipo["Clasificación Recursos"],
-            y=df_tipo[f"Ejecución Financiera {filtro_vigencia}"],
-            marker=dict(color=COLORS["orange_deep"], line=dict(color="#fff", width=1)),
-        ))
-        fig.update_layout(
-            barmode="group", height=460,
-            title=f"Programación vs Ejecución por Fuente — {filtro_vigencia}",
-            yaxis_title="Valor (COP)", xaxis_tickangle=-25, bargap=0.25,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(df_tipo, use_container_width=True, hide_index=True)
 
+        def fig_tipo():
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                name="Programación", x=df_tipo["Clasificación Recursos"],
+                y=df_tipo[f"Programación Financiera {filtro_vigencia}"],
+                marker=dict(color=COLORS["blue_dark"], line=dict(color="#fff", width=1)),
+            ))
+            fig.add_trace(go.Bar(
+                name="Ejecución", x=df_tipo["Clasificación Recursos"],
+                y=df_tipo[f"Ejecución Financiera {filtro_vigencia}"],
+                marker=dict(color=COLORS["orange_deep"], line=dict(color="#fff", width=1)),
+            ))
+            fig.update_layout(
+                barmode="group", height=460,
+                title=f"Programación vs Ejecución por Fuente — {filtro_vigencia}",
+                yaxis_title="Valor (COP)", xaxis_tickangle=-25, bargap=0.25,
+            )
+            return fig
+
+        columnas_tipo = [
+            {"key": "Clasificación Recursos", "label": "Fuente", "type": "text"},
+            {"key": "Tipo Fuente", "label": "Tipo", "type": "text"},
+            {"key": f"Programación Financiera {filtro_vigencia}", "label": f"Programación {filtro_vigencia}", "type": "money"},
+            {"key": f"Ejecución Financiera {filtro_vigencia}", "label": f"Ejecución {filtro_vigencia}", "type": "money"},
+            {"key": "Porcentaje de Ejecución Financiera", "label": "Avance", "type": "pctbar"},
+        ]
+        totales_tipo = {
+            f"Programación Financiera {filtro_vigencia}": df_tipo[f"Programación Financiera {filtro_vigencia}"].sum(),
+            f"Ejecución Financiera {filtro_vigencia}": df_tipo[f"Ejecución Financiera {filtro_vigencia}"].sum(),
+            "Porcentaje de Ejecución Financiera": (
+                df_tipo[f"Ejecución Financiera {filtro_vigencia}"].sum()
+                / df_tipo[f"Programación Financiera {filtro_vigencia}"].sum()
+                if df_tipo[f"Programación Financiera {filtro_vigencia}"].sum() else 0
+            ),
+        }
+        render_vista(vista, fig_factory=fig_tipo, df_tabla=df_tipo,
+                     columnas=columnas_tipo, totales=totales_tipo)
+
+        # --- Por categorías del PDD ---
         st.markdown("##### Por Categorías del Plan de Desarrollo")
         cat1, cat2, cat3 = st.tabs(["Líneas Estratégicas", "Sectores PDD", "Programas PDD"])
 
-        with cat1:
-            df = categorias_pdd["lineas"].to_pandas()
+        def fig_cat(df, col_cat, titulo):
             fig = go.Figure()
             fig.add_trace(go.Bar(
-                name="Programación", x=df["Línea Estratégica"],
+                name="Programación", x=df[col_cat],
                 y=df[f"Programación Financiera {filtro_vigencia}"],
                 marker_color=COLORS["blue_dark"],
             ))
             fig.add_trace(go.Bar(
-                name="Ejecución", x=df["Línea Estratégica"],
+                name="Ejecución", x=df[col_cat],
                 y=df[f"Ejecución Financiera {filtro_vigencia}"],
                 marker_color=COLORS["orange_deep"],
             ))
-            fig.update_layout(barmode="group", height=460,
-                              title=f"Programación vs Ejecución por Línea — {filtro_vigencia}",
-                              xaxis_tickangle=-20)
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            fig.update_layout(barmode="group", height=480,
+                              title=titulo, xaxis_tickangle=-30)
+            return fig
+
+        with cat1:
+            vista = selector_vista("vista_fin_cat_lineas")
+            df = categorias_pdd["lineas"].to_pandas()
+            columnas = [
+                {"key": "Línea Estratégica", "label": "Línea Estratégica", "type": "text"},
+                {"key": f"Programación Financiera {filtro_vigencia}", "label": "Programación", "type": "money"},
+                {"key": f"Ejecución Financiera {filtro_vigencia}", "label": "Ejecución", "type": "money"},
+                {"key": "Porcentaje de Ejecución Financiera", "label": "Avance", "type": "pctbar"},
+            ]
+            totales = {
+                f"Programación Financiera {filtro_vigencia}": df[f"Programación Financiera {filtro_vigencia}"].sum(),
+                f"Ejecución Financiera {filtro_vigencia}": df[f"Ejecución Financiera {filtro_vigencia}"].sum(),
+                "Porcentaje de Ejecución Financiera": (
+                    df[f"Ejecución Financiera {filtro_vigencia}"].sum()
+                    / df[f"Programación Financiera {filtro_vigencia}"].sum()
+                    if df[f"Programación Financiera {filtro_vigencia}"].sum() else 0
+                ),
+            }
+            render_vista(
+                vista,
+                fig_factory=lambda: fig_cat(df, "Línea Estratégica",
+                                            f"Programación vs Ejecución por Línea — {filtro_vigencia}"),
+                df_tabla=df, columnas=columnas, totales=totales,
+            )
 
         with cat2:
+            vista = selector_vista("vista_fin_cat_sectores")
             df = categorias_pdd["sectores"].to_pandas()
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                name="Programación", x=df["Sector PDD"],
-                y=df[f"Programación Financiera {filtro_vigencia}"],
-                marker_color=COLORS["blue_dark"],
-            ))
-            fig.add_trace(go.Bar(
-                name="Ejecución", x=df["Sector PDD"],
-                y=df[f"Ejecución Financiera {filtro_vigencia}"],
-                marker_color=COLORS["orange_deep"],
-            ))
-            fig.update_layout(barmode="group", height=560,
-                              title=f"Programación vs Ejecución por Sector — {filtro_vigencia}",
-                              xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            columnas = [
+                {"key": "Sector PDD", "label": "Sector PDD", "type": "text"},
+                {"key": f"Programación Financiera {filtro_vigencia}", "label": "Programación", "type": "money"},
+                {"key": f"Ejecución Financiera {filtro_vigencia}", "label": "Ejecución", "type": "money"},
+                {"key": "Porcentaje de Ejecución Financiera", "label": "Avance", "type": "pctbar"},
+            ]
+            totales = {
+                f"Programación Financiera {filtro_vigencia}": df[f"Programación Financiera {filtro_vigencia}"].sum(),
+                f"Ejecución Financiera {filtro_vigencia}": df[f"Ejecución Financiera {filtro_vigencia}"].sum(),
+                "Porcentaje de Ejecución Financiera": (
+                    df[f"Ejecución Financiera {filtro_vigencia}"].sum()
+                    / df[f"Programación Financiera {filtro_vigencia}"].sum()
+                    if df[f"Programación Financiera {filtro_vigencia}"].sum() else 0
+                ),
+            }
+            render_vista(
+                vista,
+                fig_factory=lambda: fig_cat(df, "Sector PDD",
+                                            f"Programación vs Ejecución por Sector — {filtro_vigencia}"),
+                df_tabla=df, columnas=columnas, totales=totales,
+            )
 
         with cat3:
+            vista = selector_vista("vista_fin_cat_programas")
             df = categorias_pdd["programas"].to_pandas()
-            st.dataframe(df, use_container_width=True, hide_index=True, height=520)
+            columnas = [
+                {"key": "Programa PDD", "label": "Programa PDD", "type": "text"},
+                {"key": f"Programación Financiera {filtro_vigencia}", "label": "Programación", "type": "money"},
+                {"key": f"Ejecución Financiera {filtro_vigencia}", "label": "Ejecución", "type": "money"},
+                {"key": "Porcentaje de Ejecución Financiera", "label": "Avance", "type": "pctbar"},
+            ]
+            totales = {
+                f"Programación Financiera {filtro_vigencia}": df[f"Programación Financiera {filtro_vigencia}"].sum(),
+                f"Ejecución Financiera {filtro_vigencia}": df[f"Ejecución Financiera {filtro_vigencia}"].sum(),
+                "Porcentaje de Ejecución Financiera": (
+                    df[f"Ejecución Financiera {filtro_vigencia}"].sum()
+                    / df[f"Programación Financiera {filtro_vigencia}"].sum()
+                    if df[f"Programación Financiera {filtro_vigencia}"].sum() else 0
+                ),
+            }
+
+            def fig_programas():
+                df_top = df.sort_values(f"Ejecución Financiera {filtro_vigencia}", ascending=True).tail(20)
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    name="Programación", y=df_top["Programa PDD"],
+                    x=df_top[f"Programación Financiera {filtro_vigencia}"],
+                    orientation="h",
+                    marker_color=COLORS["blue_dark"],
+                ))
+                fig.add_trace(go.Bar(
+                    name="Ejecución", y=df_top["Programa PDD"],
+                    x=df_top[f"Ejecución Financiera {filtro_vigencia}"],
+                    orientation="h",
+                    marker_color=COLORS["orange_deep"],
+                ))
+                fig.update_layout(
+                    barmode="group", height=650,
+                    title=f"Top 20 programas por ejecución — {filtro_vigencia}",
+                    xaxis_title="Valor (COP)",
+                )
+                return fig
+
+            render_vista(vista, fig_factory=fig_programas,
+                         df_tabla=df, columnas=columnas, totales=totales)
 
     with sub_c:
         k1, k2, k3 = st.columns(3)
@@ -1167,19 +1608,52 @@ with tab2:
         k2.metric("Ejecución Acumulada", formato_pesos(ejec_acum))
         k3.metric("Avance", formato_porcentaje(pct_cuatri))
 
+        vista = selector_vista("vista_fin_cuatri")
         df_acum = ejec_acumulada_tipo.to_pandas()
-        fig = go.Figure()
-        fig.add_trace(go.Bar(name="Ejecución 2024", x=df_acum["Clasificación Recursos"],
-                             y=df_acum["Ejecución Financiera 2024"], marker_color=COLORS["green_light"]))
-        fig.add_trace(go.Bar(name="Ejecución 2025", x=df_acum["Clasificación Recursos"],
-                             y=df_acum["Ejecución Financiera 2025"], marker_color=COLORS["blue"]))
-        fig.add_trace(go.Bar(name="Ejecución 2026", x=df_acum["Clasificación Recursos"],
-                             y=df_acum["Ejecución Financiera 2026"], marker_color=COLORS["orange_deep"]))
-        fig.update_layout(barmode="stack", height=520,
-                          title="Ejecución Acumulada por Fuente (2024-2026)",
-                          yaxis_title="Valor (COP)", xaxis_tickangle=-25, bargap=0.25)
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(df_acum, use_container_width=True, hide_index=True)
+
+        def fig_acum():
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name="Ejecución 2024", x=df_acum["Clasificación Recursos"],
+                                 y=df_acum["Ejecución Financiera 2024"], marker_color=COLORS["green_light"]))
+            fig.add_trace(go.Bar(name="Ejecución 2025", x=df_acum["Clasificación Recursos"],
+                                 y=df_acum["Ejecución Financiera 2025"], marker_color=COLORS["blue"]))
+            fig.add_trace(go.Bar(name="Ejecución 2026", x=df_acum["Clasificación Recursos"],
+                                 y=df_acum["Ejecución Financiera 2026"], marker_color=COLORS["orange_deep"]))
+            fig.update_layout(barmode="stack", height=520,
+                              title="Ejecución Acumulada por Fuente (2024-2026)",
+                              yaxis_title="Valor (COP)", xaxis_tickangle=-25, bargap=0.25)
+            return fig
+
+        # Calcular % de avance cuatrienio por fuente
+        df_acum_tabla = df_acum.copy()
+        df_acum_tabla["% Avance Cuatrienio"] = df_acum_tabla.apply(
+            lambda r: (r["Ejecución Financiera Acumulada"] / r["Programación Cuatrienio"])
+            if r["Programación Cuatrienio"] else 0, axis=1
+        )
+
+        columnas_acum = [
+            {"key": "Clasificación Recursos", "label": "Fuente", "type": "text"},
+            {"key": "Programación Cuatrienio", "label": "Programación Cuatrienio", "type": "money"},
+            {"key": "Ejecución Financiera 2024", "label": "Ejec. 2024", "type": "money"},
+            {"key": "Ejecución Financiera 2025", "label": "Ejec. 2025", "type": "money"},
+            {"key": "Ejecución Financiera 2026", "label": "Ejec. 2026", "type": "money"},
+            {"key": "Ejecución Financiera Acumulada", "label": "Ejec. Acumulada", "type": "money"},
+            {"key": "% Avance Cuatrienio", "label": "Avance", "type": "pctbar"},
+        ]
+        totales_acum = {
+            "Programación Cuatrienio": df_acum_tabla["Programación Cuatrienio"].sum(),
+            "Ejecución Financiera 2024": df_acum_tabla["Ejecución Financiera 2024"].sum(),
+            "Ejecución Financiera 2025": df_acum_tabla["Ejecución Financiera 2025"].sum(),
+            "Ejecución Financiera 2026": df_acum_tabla["Ejecución Financiera 2026"].sum(),
+            "Ejecución Financiera Acumulada": df_acum_tabla["Ejecución Financiera Acumulada"].sum(),
+            "% Avance Cuatrienio": (
+                df_acum_tabla["Ejecución Financiera Acumulada"].sum()
+                / df_acum_tabla["Programación Cuatrienio"].sum()
+                if df_acum_tabla["Programación Cuatrienio"].sum() else 0
+            ),
+        }
+        render_vista(vista, fig_factory=fig_acum, df_tabla=df_acum_tabla,
+                     columnas=columnas_acum, totales=totales_acum)
 
 # -----------------------------------------------------------------
 # 03. DISTRIBUCIÓN DE METAS
@@ -1191,58 +1665,54 @@ with tab3:
     prog_ff = datos["prog_fisica_financiera"]
     programacion_cuatrienio = prog_ff.select(pl.col("Meta de cuatrenio").sum()).item() or 1
 
-    distribucion = {
-        "2024": (prog_ff.select(pl.col("Meta Física Esperada 2024").sum()).item() or 0) / programacion_cuatrienio,
-        "2025": (prog_ff.select(pl.col("Meta Física Esperada 2025").sum()).item() or 0) / programacion_cuatrienio,
-        "2026": (prog_ff.select(pl.col("Meta Física Esperada 2026").sum()).item() or 0) / programacion_cuatrienio,
-        "2027": (prog_ff.select(pl.col("Meta Física Esperada 2027").sum()).item() or 0) / programacion_cuatrienio,
-    }
+    distribucion = {}
+    for v in ["2024", "2025", "2026", "2027"]:
+        suma = prog_ff.select(pl.col(f"Meta Física Esperada {v}").sum()).item() or 0
+        distribucion[v] = (suma / programacion_cuatrienio, suma)
 
-    df_dist = pd.DataFrame({"Vigencia": list(distribucion.keys()),
-                            "Distribución": list(distribucion.values())})
+    df_dist = pd.DataFrame({
+        "Vigencia": list(distribucion.keys()),
+        "Suma metas físicas": [v[1] for v in distribucion.values()],
+        "Distribución": [v[0] for v in distribucion.values()],
+    })
 
-    col1, col2 = st.columns(2)
-    with col1:
-        fig = px.pie(
-            df_dist, values="Distribución", names="Vigencia",
-            title="Distribución por vigencia", hole=0.55,
-            color_discrete_sequence=[COLORS["blue_dark"], COLORS["cyan"],
-                                     COLORS["orange_deep"], COLORS["brown"]],
-        )
-        fig.update_traces(
+    vista = selector_vista("vista_distr")
+
+    def fig_distr():
+        fig = go.Figure(data=[go.Pie(
+            labels=df_dist["Vigencia"], values=df_dist["Distribución"],
+            hole=0.55,
+            marker=dict(
+                colors=[COLORS["blue_dark"], COLORS["cyan"],
+                        COLORS["orange_deep"], COLORS["brown"]],
+                line=dict(color="#fff", width=2),
+            ),
             textinfo="label+percent",
-            textfont=dict(family=FONT_DISPLAY, size=14, color="#fff"),
-            marker=dict(line=dict(color="#fff", width=2)),
-        )
-        fig.update_layout(height=430, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+            textfont=dict(family=FONT_HEADING, size=14, color="#fff"),
+        )])
+        fig.update_layout(height=470, showlegend=False,
+                          title="Distribución por Vigencia")
+        return fig
 
-    with col2:
-        fig = px.bar(
-            df_dist, x="Vigencia", y="Distribución",
-            text="Distribución", color="Vigencia",
-            title="Distribución por vigencia",
-            color_discrete_sequence=[COLORS["blue_dark"], COLORS["cyan"],
-                                     COLORS["orange_deep"], COLORS["brown"]],
-        )
-        fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
-                          marker_line_color=COLORS["blue_dark"], marker_line_width=0.5)
-        fig.update_layout(yaxis_tickformat=".0%", height=430, showlegend=False,
-                          bargap=0.45)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.dataframe(
-        df_dist.assign(**{"Distribución": df_dist["Distribución"].map(lambda x: f"{x*100:.2f}%")}),
-        use_container_width=True, hide_index=True,
-    )
+    columnas_dist = [
+        {"key": "Vigencia", "label": "Vigencia", "type": "text"},
+        {"key": "Suma metas físicas", "label": "Metas físicas programadas", "type": "int"},
+        {"key": "Distribución", "label": "Distribución", "type": "pctbar"},
+    ]
+    totales_dist = {
+        "Suma metas físicas": df_dist["Suma metas físicas"].sum(),
+        "Distribución": df_dist["Distribución"].sum(),
+    }
+    render_vista(vista, fig_factory=fig_distr,
+                 df_tabla=df_dist, columnas=columnas_dist, totales=totales_dist)
 
     st.markdown(" ")
     st.markdown("##### Conteo de Metas")
     a, b = st.columns(2)
     a.metric("Total de indicadores de producto",
-             f"{avances_fisicos['numero_total_metas']:,}")
+             formato_entero(avances_fisicos['numero_total_metas']))
     b.metric(f"Indicadores con programación en {filtro_vigencia}",
-             f"{avances_fisicos['numero_metas_prog_vigencia']:,}")
+             formato_entero(avances_fisicos['numero_metas_prog_vigencia']))
 
 # -----------------------------------------------------------------
 # 04. EJECUCIÓN POR DEPENDENCIA
@@ -1265,29 +1735,31 @@ with tab4:
     if df_dep.empty:
         st.info("No hay dependencias con metas programadas en la vigencia seleccionada.")
     else:
-        df_plot = df_dep.sort_values(f"Porcentaje de Ejecución {filtro_vigencia}", ascending=True)
-        fig = px.bar(
-            df_plot, x=f"Porcentaje de Ejecución {filtro_vigencia}", y="Dependencia Responsable",
-            orientation="h", text=f"Porcentaje de Ejecución {filtro_vigencia}",
-            color=f"Porcentaje de Ejecución {filtro_vigencia}", color_continuous_scale=SCALE_ORANGE,
-            title=f"Porcentaje de Ejecución Física por Dependencia — {filtro_vigencia}",
-        )
-        fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
-                          marker_line_color=COLORS["brown"], marker_line_width=0.5)
-        fig.update_layout(xaxis_tickformat=".0%",
-                          height=max(450, len(df_plot) * 32),
-                          showlegend=False, coloraxis_showscale=False, bargap=0.25)
-        st.plotly_chart(fig, use_container_width=True)
+        vista = selector_vista("vista_dep")
 
-        st.markdown("##### Resumen por dependencia")
-        df_show = df_dep.copy()
-        df_show[f"Porcentaje de Ejecución {filtro_vigencia}"] = df_show[f"Porcentaje de Ejecución {filtro_vigencia}"].map(
-            lambda x: f"{x*100:.2f}%" if pd.notna(x) else ""
-        )
-        df_show["Porcentaje de Ejecución Acumulada"] = df_show["Porcentaje de Ejecución Acumulada"].map(
-            lambda x: f"{x*100:.2f}%" if pd.notna(x) else ""
-        )
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
+        def fig_dep():
+            df_plot = df_dep.sort_values(f"Porcentaje de Ejecución {filtro_vigencia}", ascending=True)
+            fig = px.bar(
+                df_plot, x=f"Porcentaje de Ejecución {filtro_vigencia}", y="Dependencia Responsable",
+                orientation="h", text=f"Porcentaje de Ejecución {filtro_vigencia}",
+                color=f"Porcentaje de Ejecución {filtro_vigencia}", color_continuous_scale=SCALE_ORANGE,
+                title=f"Porcentaje de Ejecución Física por Dependencia — {filtro_vigencia}",
+            )
+            fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
+                              marker_line_color=COLORS["brown"], marker_line_width=0.5)
+            fig.update_layout(xaxis_tickformat=".0%",
+                              height=max(450, len(df_plot) * 32),
+                              showlegend=False, coloraxis_showscale=False, bargap=0.25)
+            return fig
+
+        columnas_dep = [
+            {"key": "Dependencia Responsable", "label": "Dependencia", "type": "text"},
+            {"key": f"Metas Programadas {filtro_vigencia}", "label": f"Programadas {filtro_vigencia}", "type": "int"},
+            {"key": f"Metas Cumplidas al 100% {filtro_vigencia}", "label": "Cumplidas 100%", "type": "int"},
+            {"key": f"Porcentaje de Ejecución {filtro_vigencia}", "label": f"Avance {filtro_vigencia}", "type": "pctbar"},
+            {"key": "Porcentaje de Ejecución Acumulada", "label": "Avance acumulado", "type": "pctbar"},
+        ]
+        render_vista(vista, fig_factory=fig_dep, df_tabla=df_dep, columnas=columnas_dep)
 
 # -----------------------------------------------------------------
 # 05. DETALLE POR META
