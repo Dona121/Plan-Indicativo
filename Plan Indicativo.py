@@ -108,43 +108,14 @@ h1 {{ font-weight: 800 !important; }}
 h2, h3 {{ font-weight: 700 !important; }}
 h4, h5, h6 {{ font-weight: 600 !important; }}
 
-/* Menú y footer ocultos, pero preservando los controles de la sidebar */
-#MainMenu, footer {{ visibility: hidden; }}
-header {{ background: transparent !important; }}
+/* Footer oculto. NO tocamos el header ni el toolbar: Streamlit usa esos
+   contenedores para el botón de reabrir la sidebar cuando está colapsada,
+   y cualquier regla sobre [data-testid="collapsedControl"] o el toolbar
+   la rompe. */
+footer {{ visibility: hidden; }}
 
-/* El header original de Streamlit se oculta, pero dejamos visible el botón
-   colapsado que aparece cuando se cierra la sidebar. */
-header [data-testid="stToolbar"] {{ visibility: hidden; }}
-
-/* Botón para reabrir la sidebar cuando está colapsada */
-[data-testid="collapsedControl"],
-button[kind="header"],
-button[data-testid="baseButton-header"],
-[data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarCollapsedControl"] {{
-    visibility: visible !important;
-    display: flex !important;
-    opacity: 1 !important;
-    z-index: 999999 !important;
-    color: #fff !important;
-    background: var(--blue-dark) !important;
-    border-radius: 2px !important;
-    padding: 0.35rem !important;
-    box-shadow: 0 2px 6px rgba(0, 61, 108, 0.25) !important;
-}}
-[data-testid="collapsedControl"] svg,
-button[kind="header"] svg,
-[data-testid="stSidebarCollapseButton"] svg,
-[data-testid="stSidebarCollapsedControl"] svg {{
-    color: #fff !important;
-    fill: #fff !important;
-}}
-[data-testid="collapsedControl"]:hover,
-button[kind="header"]:hover,
-[data-testid="stSidebarCollapseButton"]:hover,
-[data-testid="stSidebarCollapsedControl"]:hover {{
-    background: var(--blue) !important;
-}}
+/* Menú hamburguesa oculto sin tocar el resto del header */
+#MainMenu {{ visibility: hidden; }}
 
 /* Sidebar */
 [data-testid="stSidebar"] {{
