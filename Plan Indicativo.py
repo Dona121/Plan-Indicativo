@@ -566,12 +566,22 @@ GH = {
     "r24": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/INFORME%20FINANCIERO%20REGALIAS%20A%2031%20DE%20DICIEMBRE%20DE%202024.xlsx",
     "h25": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20ENERO%20A%20DICIEMBRE%202025.xlsx",
     "r25": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/PAGOS%20REGALIAS%20ENERO%20-%20DICIEMBRE%202025.xlsx",
+    # Fuentes adicionales 2025 (vigencia cerrada)
+    "ads_rp_25":     "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/RELACION%20DE%20PAGOS%20ENERO%20A%20DICIEMBRE%20ADS.xlsx",
+    "ads_reg_25":    "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/PAGOS%20REGALIAS%202025%20ADS.xlsx",
+    "gestiones_25":  "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EjecucionFinancieraGestiones_20260210.xlsx",
+    "fondo_mixto_25":"https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/CONTRATOS%20Y%20CONVENIOS%202025%20-%20FONDO%20MIXTO.xlsx",
+    "inder_25":      "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EjecucionIndersucre_Territorial_Regalias_202602010.xlsx",
+    # Archivos actualizables
     "h26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/EJECUCION%20INVERSION%20DE%20HACIENDA%20PRUEBA%202026.xlsx",
     "r26": "https://raw.githubusercontent.com/Dona121/Plan-Indicativo/main/data/CG-cttos_04_marzo_20260304.xlsx",
 }
 
 # Vigencias cerradas (siempre se descargan del repo)
-ARCHIVOS_CERRADOS = ["h24", "r24", "h25", "r25"]
+ARCHIVOS_CERRADOS = [
+    "h24", "r24", "h25", "r25",
+    "ads_rp_25", "ads_reg_25", "gestiones_25", "fondo_mixto_25", "inder_25",
+]
 # Archivos que el usuario puede actualizar manualmente
 ARCHIVOS_ACTUALIZABLES = ["pi", "h26", "r26"]
 
@@ -764,7 +774,12 @@ def selector_vista(key: str) -> str:
 # Procesamiento
 # =========================================================================
 @st.cache_data(show_spinner="Procesando datos del Plan Indicativo...")
-def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_bytes, r26_bytes):
+def procesar_datos(
+    pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes,
+    ads_rp_25_bytes, ads_reg_25_bytes, gestiones_25_bytes,
+    fondo_mixto_25_bytes, inder_25_bytes,
+    h26_bytes, r26_bytes,
+):
     plan_indicativo = pl.read_excel(io.BytesIO(pi_bytes), table_name="tblPlanIndicativo_2")
     orden_lineas_pdd = pl.read_excel(io.BytesIO(pi_bytes), table_name="orden_lineas")
     orden_sectores_pdd = pl.read_excel(io.BytesIO(pi_bytes), table_name="orden_sectores")
@@ -773,7 +788,9 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
 
     columnas_prog_ejec_fisica = plan_indicativo.select(
         "Codigo Meta", "Línea Estratégica", "Sector PDD",
-        "Numero Programa PDD", "Programa PDD", "Meta de cuatrenio",
+        "Numero Programa PDD", "Programa PDD",
+        "Indicador de producto principal", "código de indicador principal",
+        "Meta de cuatrenio",
         "Tipo de Acumulación", "Responsable", "Meta Física Esperada 2024",
         "Meta Física Esperada 2025", "Meta Física Esperada 2026", "Meta Física Esperada 2027",
         "PROYECTOS 2024", "PROYECTOS 2025", "PROYECTOS/GESTIONES PROGRAMADAS 2026", "PROYECTOS 2026",
@@ -783,6 +800,7 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
         "EJECUCIÓN ACUMULADA", "PORCENTAJE DE EJECUCIÓN ACUMULADA", "CATEGORÍA DE EJECUCIÓN ACUMULADA",
     )
 
+    # --- Ejecución 2024 ---
     ejecucion_regalias_2024 = (
         pl.read_excel(io.BytesIO(r24_bytes), table_name="EjecucionRegalias",
                       columns=["CODIGO META", "COMPROMISOS", "CLASIFICACIÓN RECURSOS"])
@@ -797,6 +815,7 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
         .filter(pl.col("CODIGO META") != "", pl.col("CLASIFICACIÓN RECURSOS") != "")
     )
 
+    # --- Ejecución 2025 (fuentes base) ---
     ejecucion_regalias_2025 = (
         pl.read_excel(io.BytesIO(r25_bytes), table_name="Pagos_Regalias_2025")
         .select("PAGOS REGALIAS", "CODIGO META", "CLASIFICACIÓN RECURSOS")
@@ -815,6 +834,51 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
         .select("CODIGO META", "CLASIFICACIÓN RECURSOS", "RP")
     )
 
+    # --- Ejecución 2025 (fuentes adicionales) ---
+    ejecucion_2025_ads_recursos_propios = (
+        pl.read_excel(io.BytesIO(ads_rp_25_bytes), table_name="PagosAguasDeSucre")
+        .select("VALOR DEL PAGO", "CLASIFICACIÓN RECURSOS", "CODIGO META")
+        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
+        .filter(pl.col("CODIGO META") != "")
+        .rename({"VALOR DEL PAGO": "RP"})
+    )
+
+    ejecucion_2025_ads_regalias = (
+        pl.read_excel(io.BytesIO(ads_reg_25_bytes), table_name="RegaliasAguasDeSucre")
+        .select("CODIGO DE META", "CLASIFICACIÓN RECURSOS", "PAGOS")
+        .rename({"CODIGO DE META": "CODIGO META", "PAGOS": "RP"})
+        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
+        .filter(pl.col("CODIGO META") != "")
+    )
+
+    ejecucion_2025_gestiones = (
+        pl.read_excel(io.BytesIO(gestiones_25_bytes), table_name="EjecucionGestiones")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    ejecucion_pdet_2025 = (
+        pl.read_excel(io.BytesIO(h25_bytes), table_name="EjecucionPDET")
+        .select("EJECUCION FINANCIERA", "CODIGO META", "CLASIFICACIÓN RECURSOS")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    ejecucion_2025_fondo_mixto = (
+        pl.read_excel(io.BytesIO(fondo_mixto_25_bytes), table_name="EjecucionFinancieraFondoMixto")
+        .select("CLASIFICACIÓN RECURSOS", "EJECUCION FINANCIERA", "CODIGO META")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    ejecucion_2025_indersucre_recursos_propios = (
+        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERTerritorio")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    ejecucion_2025_indersucre_regalias = (
+        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERRegalias")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # --- Ejecución 2026 ---
     ejecucion_regalias_2026 = (
         pl.read_excel(io.BytesIO(r26_bytes), table_name="Pagos_Regalias_2026")
         .select(pl.all().name.map(lambda x: x.strip().upper().replace("_X0009_", "")))
@@ -838,10 +902,27 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
         .select("CODIGO META", "CLASIFICACIÓN RECURSOS", "RP")
     )
 
+    # --- Agregados de ejecución por meta ---
     ejec_2024 = pl.concat([ejecucion_regalias_2024, ejecucion_hacienda_2024], how="diagonal") \
         .group_by("CODIGO META").agg(pl.col("RP").sum().alias("Ejecución Financiera 2024"))
-    ejec_2025 = pl.concat([ejecucion_regalias_2025, ejecucion_hacienda_2025], how="diagonal") \
-        .group_by("CODIGO META").agg(pl.col("RP").sum().alias("Ejecución Financiera 2025"))
+
+    # 2025 usa el explode porque algunas metas vienen concatenadas con " | "
+    ejec_2025_full = (
+        pl.concat([
+            ejecucion_regalias_2025, ejecucion_hacienda_2025,
+            ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
+            ejecucion_2025_gestiones, ejecucion_pdet_2025,
+            ejecucion_2025_fondo_mixto,
+            ejecucion_2025_indersucre_recursos_propios,
+            ejecucion_2025_indersucre_regalias,
+        ], how="diagonal")
+        .with_columns(pl.col("CODIGO META").str.split(" | "))
+        .explode("CODIGO META")
+    )
+    ejec_2025 = ejec_2025_full.group_by("CODIGO META").agg(
+        pl.col("RP").sum().alias("Ejecución Financiera 2025")
+    )
+
     ejec_2026 = pl.concat([ejecucion_regalias_2026, ejecucion_hacienda_2026], how="diagonal") \
         .group_by("CODIGO META").agg(pl.col("RP").sum().alias("Ejecución Financiera 2026"))
 
@@ -895,7 +976,14 @@ def procesar_datos(pi_bytes, h24_bytes, r24_bytes, h25_bytes, r25_bytes, h26_byt
 
     ejecuciones_financieras = {
         "2024": [ejecucion_regalias_2024, ejecucion_hacienda_2024],
-        "2025": [ejecucion_regalias_2025, ejecucion_hacienda_2025],
+        "2025": [
+            ejecucion_regalias_2025, ejecucion_hacienda_2025,
+            ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
+            ejecucion_2025_gestiones, ejecucion_pdet_2025,
+            ejecucion_2025_fondo_mixto,
+            ejecucion_2025_indersucre_recursos_propios,
+            ejecucion_2025_indersucre_regalias,
+        ],
         "2026": [ejecucion_regalias_2026, ejecucion_hacienda_2026],
     }
 
@@ -928,9 +1016,13 @@ def construir_ejecucion_financ_tipo(datos, vigencia):
     orden_fuentes = datos["orden_fuentes"]
     prog_financ_tipo = datos["prog_financ_tipo"]
 
+    concat_ejec = pl.concat(ejecuciones, how="diagonal")
+    if vigencia == "2025":
+        concat_ejec = concat_ejec.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
+
     return (
         orden_fuentes.join(
-            pl.concat(ejecuciones, how="diagonal"),
+            concat_ejec,
             left_on="Clasificación Recursos", right_on="CLASIFICACIÓN RECURSOS", how="left",
         )
         .group_by("Clasificación Recursos").agg(pl.col("RP").sum().alias(f"Ejecución Financiera {vigencia}"))
@@ -954,9 +1046,12 @@ def construir_ejecucion_acumulada_tipo(datos):
 
     agrp = {}
     for v in ["2024", "2025", "2026"]:
+        concat = pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
+        if v == "2025":
+            # Las fuentes adicionales pueden traer codigos múltiples separados por " | "
+            concat = concat.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
         agrp[v] = (
-            pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
-            .group_by("CLASIFICACIÓN RECURSOS")
+            concat.group_by("CLASIFICACIÓN RECURSOS")
             .agg(pl.col("RP").sum().alias(f"Ejecución Financiera {v}"))
         )
 
@@ -1156,6 +1251,118 @@ def construir_avances_fisicos(datos, vigencia):
 
 
 # =========================================================================
+# Constructor de proyectos por vigencia
+# =========================================================================
+def _extraer_regex(expr: pl.Expr, patron: str) -> pl.Expr:
+    return expr.str.extract(patron, group_index=1).str.strip_chars()
+
+
+def _normalizar_numero(expr: pl.Expr) -> pl.Expr:
+    x = expr.str.strip_chars().str.replace_all(r"\s+", "")
+    return (
+        pl.when(x.is_null() | (x == ""))
+        .then(pl.lit(None))
+        .when(x.str.contains(r"^\d{1,3}(?:\.\d{3})+,\d+$"))
+        .then(x.str.replace_all(r"\.", "").str.replace_all(",", "."))
+        .when(x.str.contains(r"^\d{1,3}(?:,\d{3})+\.\d+$"))
+        .then(x.str.replace_all(",", ""))
+        .when(x.str.contains(r"^\d{1,3}(?:\.\d{3})+$"))
+        .then(x.str.replace_all(r"\.", ""))
+        .when(x.str.contains(r"^\d{1,3}(?:,\d{3})+$"))
+        .then(x.str.replace_all(",", ""))
+        .when(x.str.contains(r",") & ~x.str.contains(r"\."))
+        .then(x.str.replace_all(",", "."))
+        .otherwise(x)
+        .cast(pl.Float64, strict=False)
+    )
+
+
+def construir_proyectos(datos, vigencia):
+    """Extrae proyectos/gestiones desde la columna de texto del Plan Indicativo."""
+    prog_ff = datos["prog_fisica_financiera"]
+
+    # La vigencia 2026 tiene dos columnas candidatas; se prefiere la que contenga datos.
+    col_proyecto = f"PROYECTOS {vigencia}"
+    if col_proyecto not in prog_ff.columns:
+        return pl.DataFrame()
+
+    texto = pl.col(col_proyecto)
+
+    patron_bpin = r"\((?i:bpin)\s*:\s*([^()]+?)\s*\)"
+    patron_tipo_banco = r"\((?i:tipo\s+de\s+banco)\s*:\s*([^()]+?)\s*\)"
+    patron_meta = (
+        r"\((?i:(?:"
+        r"meta\s+del\s+proyecto|"
+        r"meta\s+de\s+la\s+gesti(?:ón|on)|"
+        r"meta\s+total\s+del\s+indicador|"
+        r"meta\s+total\s+de\s+la\s+vigencia|"
+        r"meta\s+total\s+del\s+proyecto|"
+        r"meta\s+programada|"
+        r"meta\s+de\s+la\s+vigencia"
+        r"))\s*:\s*([^()]+?)\s*\)"
+    )
+    patron_ejecutado = (
+        r"\((?i:(?:"
+        r"ejecuci(?:ón|on)\s+\d{4}|"
+        r"ejecutado|"
+        r"ejecuci(?:ón|on)"
+        r"))\s*:\s*([^()]+?)\s*\)"
+    )
+    patron_estado = r"\((?i:estado\s+en\s+portafolio)\s*:\s*([^()]+?)\s*\)"
+    patron_bloques_info = (
+        r"\((?i:(?:"
+        r"bpin|"
+        r"tipo\s+de\s+banco|"
+        r"meta\s+del\s+proyecto|"
+        r"meta\s+de\s+la\s+gesti(?:ón|on)|"
+        r"meta\s+total\s+del\s+indicador|"
+        r"meta\s+total\s+de\s+la\s+vigencia|"
+        r"meta\s+total\s+del\s+proyecto|"
+        r"meta\s+programada|"
+        r"meta\s+de\s+la\s+vigencia|"
+        r"ejecuci(?:ón|on)\s+\d{4}|"
+        r"ejecutado|"
+        r"ejecuci(?:ón|on)|"
+        r"estado\s+en\s+portafolio"
+        r"))\s*:\s*[^()]+?\s*\)"
+    )
+
+    return (
+        prog_ff
+        .select(
+            "Codigo Meta", "Línea Estratégica", "Sector PDD", "Programa PDD",
+            "Indicador de producto principal", "código de indicador principal",
+            col_proyecto,
+        )
+        .with_columns(
+            pl.col(col_proyecto).fill_null("").cast(pl.String).alias(col_proyecto)
+        )
+        .filter(pl.col(col_proyecto) != "", pl.col(col_proyecto) != "0")
+        .with_columns(
+            pl.col(col_proyecto)
+            .str.replace_all(r"\n\s*\n+", "\n\n")
+            .str.split("\n\n")
+            .alias(col_proyecto)
+        )
+        .explode(col_proyecto)
+        .with_columns(pl.col(col_proyecto).str.strip_chars().alias(col_proyecto))
+        .filter(pl.col(col_proyecto) != "", pl.col(col_proyecto) != "0")
+        .with_columns(
+            texto.str.replace_all(patron_bloques_info, "")
+                 .str.replace_all(r"\s+", " ")
+                 .str.strip_chars()
+                 .alias("Nombre del Proyecto"),
+            _extraer_regex(texto, patron_bpin).alias("BPIN"),
+            _extraer_regex(texto, patron_tipo_banco).alias("Tipo de Banco"),
+            _normalizar_numero(_extraer_regex(texto, patron_meta)).alias("Meta"),
+            _normalizar_numero(_extraer_regex(texto, patron_ejecutado)).alias("Ejecutado"),
+            _extraer_regex(texto, patron_estado).alias("Estado en portafolio"),
+        )
+        .drop(col_proyecto)
+    )
+
+
+# =========================================================================
 # Sidebar
 # =========================================================================
 st.sidebar.markdown(
@@ -1259,6 +1466,9 @@ try:
     datos = procesar_datos(
         archivos_bytes["pi"], archivos_bytes["h24"], archivos_bytes["r24"],
         archivos_bytes["h25"], archivos_bytes["r25"],
+        archivos_bytes["ads_rp_25"], archivos_bytes["ads_reg_25"],
+        archivos_bytes["gestiones_25"], archivos_bytes["fondo_mixto_25"],
+        archivos_bytes["inder_25"],
         archivos_bytes["h26"], archivos_bytes["r26"],
     )
 except Exception as e:
@@ -1329,11 +1539,12 @@ st.markdown("<hr/>", unsafe_allow_html=True)
 # =========================================================================
 # Pestañas
 # =========================================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Ejecución Física",
     "Ejecución Financiera",
     "Distribución de Metas",
     "Ejecución por Dependencia",
+    "Proyectos",
     "Detalle por Meta",
 ])
 
@@ -1767,10 +1978,119 @@ with tab4:
         render_vista(vista, fig_factory=fig_dep, df_tabla=df_dep, columnas=columnas_dep)
 
 # -----------------------------------------------------------------
-# 05. DETALLE POR META
+# 05. PROYECTOS
 # -----------------------------------------------------------------
 with tab5:
-    seccion("05", "Detalle por Meta",
+    seccion("05", "Proyectos",
+            "Inventario de proyectos y gestiones asociadas a las metas del Plan de Desarrollo, "
+            "extraídos de la columna de texto del Plan Indicativo.")
+
+    df_proy = construir_proyectos(datos, filtro_vigencia).to_pandas()
+
+    if df_proy.empty:
+        st.info(f"No hay proyectos registrados para la vigencia {filtro_vigencia}.")
+    else:
+        # ---- KPIs de proyectos ----
+        total_proyectos = len(df_proy)
+        total_meta = df_proy["Meta"].sum(skipna=True)
+        total_ejecutado = df_proy["Ejecutado"].sum(skipna=True)
+        avance_proy = (total_ejecutado / total_meta) if total_meta else 0
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total de proyectos", formato_entero(total_proyectos))
+        k2.metric("Meta total", formato_pesos(total_meta))
+        k3.metric("Ejecutado", formato_pesos(total_ejecutado))
+        k4.metric("Avance proyectado", formato_porcentaje(avance_proy))
+
+        st.markdown(" ")
+
+        # ---- Filtros ----
+        fp1, fp2, fp3 = st.columns(3)
+        with fp1:
+            lineas_p = ["(Todas)"] + sorted(df_proy["Línea Estratégica"].dropna().unique().tolist())
+            sel_linea_p = st.selectbox("Línea Estratégica", lineas_p, key="proy_linea")
+        with fp2:
+            df_tp = df_proy if sel_linea_p == "(Todas)" else df_proy[df_proy["Línea Estratégica"] == sel_linea_p]
+            sectores_p = ["(Todos)"] + sorted(df_tp["Sector PDD"].dropna().unique().tolist())
+            sel_sector_p = st.selectbox("Sector PDD", sectores_p, key="proy_sector")
+        with fp3:
+            df_tp2 = df_tp if sel_sector_p == "(Todos)" else df_tp[df_tp["Sector PDD"] == sel_sector_p]
+            bancos = ["(Todos)"] + sorted([b for b in df_tp2["Tipo de Banco"].dropna().unique().tolist() if b])
+            sel_banco = st.selectbox("Tipo de Banco", bancos, key="proy_banco")
+
+        df_proy_f = df_proy.copy()
+        if sel_linea_p != "(Todas)":
+            df_proy_f = df_proy_f[df_proy_f["Línea Estratégica"] == sel_linea_p]
+        if sel_sector_p != "(Todos)":
+            df_proy_f = df_proy_f[df_proy_f["Sector PDD"] == sel_sector_p]
+        if sel_banco != "(Todos)":
+            df_proy_f = df_proy_f[df_proy_f["Tipo de Banco"] == sel_banco]
+
+        st.caption(f"Mostrando {len(df_proy_f):,} proyectos")
+
+        # ---- Vista: gráfico de proyectos por línea / tabla institucional ----
+        vista = selector_vista("vista_proyectos")
+
+        def fig_proyectos():
+            df_agg = (
+                df_proy_f.dropna(subset=["Ejecutado"])
+                .groupby("Línea Estratégica", as_index=False)
+                .agg(
+                    Ejecutado=("Ejecutado", "sum"),
+                    Meta=("Meta", "sum"),
+                    Proyectos=("Nombre del Proyecto", "count"),
+                )
+                .sort_values("Ejecutado", ascending=True)
+            )
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                name="Meta", y=df_agg["Línea Estratégica"], x=df_agg["Meta"],
+                orientation="h", marker_color=COLORS["blue_dark"],
+            ))
+            fig.add_trace(go.Bar(
+                name="Ejecutado", y=df_agg["Línea Estratégica"], x=df_agg["Ejecutado"],
+                orientation="h", marker_color=COLORS["orange_deep"],
+            ))
+            fig.update_layout(
+                barmode="group", height=max(450, len(df_agg) * 60),
+                title=f"Meta vs Ejecutado por Línea Estratégica — Proyectos {filtro_vigencia}",
+                xaxis_title="Valor (COP)",
+            )
+            return fig
+
+        columnas_proy = [
+            {"key": "Codigo Meta", "label": "Meta", "type": "text"},
+            {"key": "Nombre del Proyecto", "label": "Proyecto", "type": "text"},
+            {"key": "BPIN", "label": "BPIN", "type": "text"},
+            {"key": "Tipo de Banco", "label": "Banco", "type": "text"},
+            {"key": "Meta", "label": "Meta ($)", "type": "money"},
+            {"key": "Ejecutado", "label": "Ejecutado ($)", "type": "money"},
+            {"key": "Estado en portafolio", "label": "Estado", "type": "text"},
+        ]
+        render_vista(
+            vista,
+            fig_factory=fig_proyectos,
+            df_tabla=df_proy_f.head(200),  # límite razonable para la tabla institucional
+            columnas=columnas_proy,
+        )
+
+        if len(df_proy_f) > 200:
+            st.caption("La tabla muestra los primeros 200 proyectos. Descarga el CSV para el listado completo.")
+
+        csv_proy = df_proy_f.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "Descargar proyectos en CSV",
+            data=csv_proy,
+            file_name=f"proyectos_{filtro_vigencia}.csv",
+            mime="text/csv",
+            key="dl_proyectos",
+        )
+
+# -----------------------------------------------------------------
+# 06. DETALLE POR META
+# -----------------------------------------------------------------
+with tab6:
+    seccion("06", "Detalle por Meta",
             "Consulta del inventario completo de indicadores de producto del Plan Indicativo.")
 
     prog_ff = datos["prog_fisica_financiera"]
