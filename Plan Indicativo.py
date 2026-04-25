@@ -922,17 +922,35 @@ def procesar_datos(
     ejec_2024 = pl.concat([ejecucion_regalias_2024, ejecucion_hacienda_2024], how="diagonal") \
         .group_by("CODIGO META").agg(pl.col("RP").sum().alias("Ejecución Financiera 2024"))
 
-    # 2025 usa el explode porque algunas metas vienen concatenadas con " | "
+    # 2025: las fuentes adicionales traen códigos múltiples separados por " | ".
+    #
+    # Antes simplemente exploábamos la lista, lo que daba a CADA meta el RP completo
+    # de la fila original (un pago de 1M para "MT01 | MT02 | MT03" se contaba 3 veces).
+    # Eso INFLABA el total de ejecución (en el caso real, hasta 1.29 B COP).
+    #
+    # La corrección distribuye el RP equitativamente entre las metas antes de explotar,
+    # de forma análoga a como Hacienda 2025/2026 ya hace cuando "DISTRIBUIR DE FORMA
+    # EQUITATIVA == SI" (divide el RP entre 2). Aquí lo generalizamos a N metas.
+    ejec_2025_concat = pl.concat([
+        ejecucion_regalias_2025, ejecucion_hacienda_2025,
+        ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
+        ejecucion_2025_gestiones, ejecucion_pdet_2025,
+        ejecucion_2025_fondo_mixto,
+        ejecucion_2025_indersucre_recursos_propios,
+        ejecucion_2025_indersucre_regalias,
+    ], how="diagonal")
+
     ejec_2025_full = (
-        pl.concat([
-            ejecucion_regalias_2025, ejecucion_hacienda_2025,
-            ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
-            ejecucion_2025_gestiones, ejecucion_pdet_2025,
-            ejecucion_2025_fondo_mixto,
-            ejecucion_2025_indersucre_recursos_propios,
-            ejecucion_2025_indersucre_regalias,
-        ], how="diagonal")
-        .with_columns(pl.col("CODIGO META").str.split(" | "))
+        ejec_2025_concat
+        .with_columns(pl.col("CODIGO META").str.split(" | ").alias("_metas"))
+        .with_columns(
+            pl.when(pl.col("_metas").list.len() > 1)
+              .then(pl.col("RP") / pl.col("_metas").list.len())
+              .otherwise(pl.col("RP"))
+              .alias("RP")
+        )
+        .drop("CODIGO META")
+        .rename({"_metas": "CODIGO META"})
         .explode("CODIGO META")
     )
     ejec_2025 = ejec_2025_full.group_by("CODIGO META").agg(
@@ -1059,17 +1077,22 @@ def construir_ejecucion_financ_tipo(datos, vigencia):
 
 
 def construir_ejecucion_acumulada_tipo(datos):
+    """Acumulado por CLASIFICACIÓN RECURSOS para todo el cuatrienio.
+
+    NOTA: para 2025 NO se hace explode por '| '. La clasificación de recursos
+    es atributo de la fila completa (un pago tiene UNA clasificación), por lo que
+    explotar por código de meta solo duplicaría el RP bajo la misma fuente.
+    Esto difiere del agregado por CÓDIGO META, donde el explode es necesario
+    pero acompañado de división del RP entre el número de metas.
+    """
     orden_fuentes = datos["orden_fuentes"]
     prog_financ_tipo = datos["prog_financ_tipo"]
 
     agrp = {}
     for v in ["2024", "2025", "2026"]:
-        concat = pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
-        if v == "2025":
-            # Las fuentes adicionales pueden traer codigos múltiples separados por " | "
-            concat = concat.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
         agrp[v] = (
-            concat.group_by("CLASIFICACIÓN RECURSOS")
+            pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
+            .group_by("CLASIFICACIÓN RECURSOS")
             .agg(pl.col("RP").sum().alias(f"Ejecución Financiera {v}"))
         )
 
