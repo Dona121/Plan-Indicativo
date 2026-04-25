@@ -1028,17 +1028,19 @@ def procesar_datos(
 # Constructores de reportes por vigencia
 # =========================================================================
 def construir_ejecucion_financ_tipo(datos, vigencia):
+    """Replica exactamente el bloque del notebook 'Ejecución Financiera por Clasificación de Recurso'.
+
+    Nota: el notebook NO hace explode por '| ' aquí, aunque sí lo hace en el acumulado.
+    Esto es intencional: al agrupar por CLASIFICACIÓN RECURSOS, explotar por CODIGO META
+    duplicaría el RP bajo la misma fuente. Mantenemos la lógica del notebook.
+    """
     ejecuciones = datos["ejecuciones_financieras"][vigencia]
     orden_fuentes = datos["orden_fuentes"]
     prog_financ_tipo = datos["prog_financ_tipo"]
 
-    concat_ejec = pl.concat(ejecuciones, how="diagonal")
-    if vigencia == "2025":
-        concat_ejec = concat_ejec.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
-
     return (
         orden_fuentes.join(
-            concat_ejec,
+            pl.concat(ejecuciones, how="diagonal"),
             left_on="Clasificación Recursos", right_on="CLASIFICACIÓN RECURSOS", how="left",
         )
         .group_by("Clasificación Recursos").agg(pl.col("RP").sum().alias(f"Ejecución Financiera {vigencia}"))
@@ -1127,6 +1129,12 @@ def construir_prog_financ_categorias(datos, vigencia):
 
 
 def construir_ejec_por_dependencia(datos, vigencia):
+    """Equivalente a 'ejecucion_por_dependencia' del notebook.
+
+    Usamos join 'inner' con la homologación de secretarías (como hace
+    'avance_por_dependencia' en el notebook), así evitamos filas donde la
+    dependencia no tiene homologación y aparecen con valores vacíos.
+    """
     prog_ff = datos["prog_fisica_financiera"]
     homologacion = datos["homologacion_secretarias"]
 
@@ -1153,7 +1161,7 @@ def construir_ejec_por_dependencia(datos, vigencia):
             pl.col(f"Metas Programadas {vigencia}").sum(),
             pl.col(f"Metas Cumplidas al 100% {vigencia}").sum(),
         )
-        .join(homologacion, left_on="Responsable", right_on="Responsable en PI", how="left")
+        .join(homologacion, left_on="Responsable", right_on="Responsable en PI", how="inner")
         .join(ejec_acumulada, on="Responsable", how="left")
         .select("Varias Secretarías", "Dependencia Responsable",
                 f"Metas Programadas {vigencia}", f"Metas Cumplidas al 100% {vigencia}",
