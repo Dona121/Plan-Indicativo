@@ -78,11 +78,11 @@ CSS = f"""
     --brown:       {COLORS["brown"]};
     --coral:       {COLORS["coral"]};
 
-    --paper:       #fbfaf6;
+    --paper:       #fcfcfb;
     --ink:         #0d1b2a;
     --ink-mute:    #4a5a6a;
-    --hairline:    #d9d4c7;
-    --chip-bg:     #f1ede2;
+    --hairline:    #e2e0d8;
+    --chip-bg:     #f3f1ec;
 }}
 
 /* Base tipográfica */
@@ -484,10 +484,10 @@ hr {{
     color: var(--ink);
 }}
 .institutional-table tbody tr:nth-child(even) {{
-    background: #faf8f2;
+    background: #f7f7f4;
 }}
 .institutional-table tbody tr:hover {{
-    background: #f1ede2;
+    background: #f0eee9;
 }}
 .institutional-table tbody tr:last-child td {{
     border-bottom: none;
@@ -495,7 +495,7 @@ hr {{
 .institutional-table tfoot td {{
     font-family: '{FONT_HEADING}', sans-serif;
     font-weight: 700;
-    background: #f1ede2;
+    background: #f0eee9;
     padding: 0.75rem 0.9rem;
     border-top: 2px solid var(--blue-dark);
     color: var(--blue-dark);
@@ -580,12 +580,12 @@ corporate_template.layout = go.Layout(
     plot_bgcolor="white",
     colorway=CORPORATE_SEQUENCE,
     xaxis=dict(
-        gridcolor="#ece7db", linecolor="#bfb8a6", zerolinecolor="#ece7db",
+        gridcolor="#ebe9e1", linecolor="#c5c2b6", zerolinecolor="#ebe9e1",
         ticks="outside", tickfont=dict(size=11, color="#4a5a6a"),
         title=dict(font=dict(size=11, color="#4a5a6a")),
     ),
     yaxis=dict(
-        gridcolor="#ece7db", linecolor="#bfb8a6", zerolinecolor="#ece7db",
+        gridcolor="#ebe9e1", linecolor="#c5c2b6", zerolinecolor="#ebe9e1",
         ticks="outside", tickfont=dict(size=11, color="#4a5a6a"),
         title=dict(font=dict(size=11, color="#4a5a6a")),
     ),
@@ -1582,6 +1582,158 @@ def construir_proyectos(datos, vigencia):
 
 
 # =========================================================================
+# Exportación a Excel — proyectos (vigencia única o consolidado)
+# =========================================================================
+def generar_excel_proyectos(
+    df_proyectos: pd.DataFrame,
+    titulo: str,
+    subtitulo: str,
+) -> bytes:
+    """Genera un xlsx formateado corporativamente con la tabla de proyectos.
+
+    df_proyectos debe traer las columnas que ya construimos en la pestaña +
+    opcionalmente 'Vigencia PI' al inicio (cuando es consolidado de todas
+    las vigencias).
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    XL_BLUE_DARK = "003D6C"
+    XL_ORANGE    = "CF7000"
+    XL_INK       = "0D1B2A"
+    XL_INK_MUTE  = "4A5A6A"
+    XL_HAIRLINE  = "E2E0D8"
+    XL_BEIGE     = "F0EEE9"
+    XL_PAPER     = "FCFCFB"
+    XL_ALT_ROW   = "F7F7F4"
+
+    thin = Border(
+        left=Side(style="thin", color=XL_HAIRLINE),
+        right=Side(style="thin", color=XL_HAIRLINE),
+        top=Side(style="thin", color=XL_HAIRLINE),
+        bottom=Side(style="thin", color=XL_HAIRLINE),
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Proyectos"
+    ws.sheet_view.showGridLines = False
+
+    n_cols = len(df_proyectos.columns)
+
+    # --- Masthead ---
+    ws.cell(row=1, column=1, value=titulo)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    c = ws.cell(row=1, column=1)
+    c.font = Font(name="Montserrat", bold=True, size=18, color="FFFFFF")
+    c.fill = PatternFill("solid", fgColor=XL_BLUE_DARK)
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[1].height = 38
+
+    ws.cell(row=2, column=1, value=subtitulo)
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
+    c = ws.cell(row=2, column=1)
+    c.font = Font(name="Open Sans", italic=True, size=10, color=XL_INK_MUTE)
+    c.fill = PatternFill("solid", fgColor=XL_PAPER)
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[2].height = 22
+
+    # Línea naranja decorativa
+    for col in range(1, n_cols + 1):
+        c = ws.cell(row=3, column=col)
+        c.fill = PatternFill("solid", fgColor=XL_ORANGE)
+    ws.row_dimensions[3].height = 4
+
+    # --- Encabezado tabla ---
+    header_row = 5
+    for c_idx, col_name in enumerate(df_proyectos.columns, start=1):
+        cell = ws.cell(row=header_row, column=c_idx, value=str(col_name))
+        cell.font = Font(name="Montserrat", bold=True, color="FFFFFF", size=10)
+        cell.fill = PatternFill("solid", fgColor=XL_BLUE_DARK)
+        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        cell.border = Border(
+            left=Side(style="thin", color=XL_BLUE_DARK),
+            right=Side(style="thin", color=XL_BLUE_DARK),
+            top=Side(style="thin", color=XL_BLUE_DARK),
+            bottom=Side(style="medium", color=XL_ORANGE),
+        )
+    ws.row_dimensions[header_row].height = 32
+
+    # --- Cuerpo ---
+    pct_cols = {"Avance"}
+    num_cols = {"Meta", "Ejecutado"}
+    for r_idx, (_, row) in enumerate(df_proyectos.iterrows(), start=header_row + 1):
+        alt = (r_idx - header_row) % 2 == 0
+        for c_idx, col_name in enumerate(df_proyectos.columns, start=1):
+            v = row[col_name]
+            if pd.isna(v):
+                v = None
+            cell = ws.cell(row=r_idx, column=c_idx, value=v)
+            cell.font = Font(name="Open Sans", size=10, color=XL_INK)
+            if alt:
+                cell.fill = PatternFill("solid", fgColor=XL_ALT_ROW)
+            cell.border = thin
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            if col_name in pct_cols:
+                cell.number_format = "0.00%"
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+            elif col_name in num_cols:
+                cell.number_format = "#,##0.00"
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    # --- Anchos ---
+    anchos = {
+        "Vigencia PI": 12, "Codigo Meta": 14, "Línea Estratégica": 28,
+        "Sector PDD": 24, "Programa PDD": 32,
+        "Nombre del Proyecto": 50, "BPIN": 18, "Indicador": 42,
+        "Tipo de Banco": 22, "Meta": 14, "Ejecutado": 14, "Avance": 12,
+    }
+    for c_idx, col_name in enumerate(df_proyectos.columns, start=1):
+        letra = get_column_letter(c_idx)
+        if col_name in anchos:
+            ws.column_dimensions[letra].width = anchos[col_name]
+        else:
+            serie = df_proyectos[col_name].astype(str)
+            max_len = max(len(str(col_name)), serie.str.len().max() if not serie.empty else 0)
+            ws.column_dimensions[letra].width = min(max(12, max_len + 2), 45)
+
+    # Congelar paneles bajo el encabezado
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
+
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
+def construir_dataframe_proyectos_listo(datos: dict, vigencia: str) -> pd.DataFrame:
+    """Toma construir_proyectos y agrega columnas calculadas (Indicador, Avance)
+    en el formato listo para mostrar/exportar."""
+    df = construir_proyectos(datos, vigencia).to_pandas()
+    if df.empty:
+        return df
+
+    df["Avance"] = df.apply(
+        lambda r: (r["Ejecutado"] / r["Meta"])
+        if pd.notna(r["Meta"]) and pd.notna(r["Ejecutado"]) and r["Meta"] != 0
+        else None,
+        axis=1,
+    )
+
+    def _fmt(row):
+        codigo = row.get("código de indicador principal")
+        nombre = row.get("Indicador de producto principal")
+        codigo = "" if pd.isna(codigo) else str(codigo).strip()
+        nombre = "" if pd.isna(nombre) else str(nombre).strip()
+        if codigo and nombre:
+            return f"{codigo} — {nombre}"
+        return codigo or nombre or ""
+
+    df["Indicador"] = df.apply(_fmt, axis=1)
+    return df
+
+
+# =========================================================================
 # Exportación a Excel con formato corporativo
 # =========================================================================
 def generar_reporte_excel(
@@ -2095,11 +2247,23 @@ def generar_reporte_excel(
         ws = wb.create_sheet("Proyectos")
         ws.sheet_view.showGridLines = False
 
-        df_proy_xl = df_proy[[
+        # Construye Indicador como "código — nombre" (igual que en la pestaña)
+        def _fmt_ind(row):
+            cod = row.get("código de indicador principal")
+            nom = row.get("Indicador de producto principal")
+            cod = "" if pd.isna(cod) else str(cod).strip()
+            nom = "" if pd.isna(nom) else str(nom).strip()
+            if cod and nom:
+                return f"{cod} — {nom}"
+            return cod or nom or ""
+
+        df_proy_xl = df_proy.copy()
+        df_proy_xl["Indicador"] = df_proy_xl.apply(_fmt_ind, axis=1)
+        df_proy_xl = df_proy_xl[[
             "Codigo Meta", "Línea Estratégica", "Sector PDD", "Programa PDD",
-            "Indicador de producto principal", "Nombre del Proyecto",
-            "BPIN", "Tipo de Banco", "Meta", "Ejecutado", "Estado en portafolio",
-        ]].rename(columns={"Indicador de producto principal": "Indicador"})
+            "Nombre del Proyecto", "BPIN", "Indicador",
+            "Tipo de Banco", "Meta", "Ejecutado",
+        ]]
         df_proy_xl["Avance"] = df_proy_xl.apply(
             lambda r: (r["Ejecutado"] / r["Meta"])
             if pd.notna(r["Meta"]) and pd.notna(r["Ejecutado"]) and r["Meta"] != 0
@@ -2119,8 +2283,8 @@ def generar_reporte_excel(
         )
         ws.freeze_panes = ws.cell(row=inicio + 1, column=1)
         ajustar_anchos(ws, df_proy_xl, anchos_especificos={
-            "Codigo Meta": 14, "Nombre del Proyecto": 50, "Indicador": 38,
-            "Tipo de Banco": 22, "Estado en portafolio": 18,
+            "Codigo Meta": 14, "Nombre del Proyecto": 50, "Indicador": 42,
+            "Tipo de Banco": 22,
             "Línea Estratégica": 28, "Sector PDD": 24, "Programa PDD": 32,
         })
 
@@ -2810,14 +2974,82 @@ with tab5:
             tooltip=(
                 "Lista los proyectos y gestiones registrados para la vigencia "
                 "en el Plan Indicativo. De cada uno se extraen el código BPIN, "
-                "el tipo de banco al que pertenece (Banco de Proyectos, Banco "
-                "de Programas, etc.), la meta física comprometida, lo "
-                "ejecutado y el estado en portafolio. El avance se reporta en "
-                "unidades físicas (no en pesos): qué tanto del producto o "
-                "servicio comprometido se entregó."
+                "el indicador de producto al que aporta, el tipo de banco al "
+                "que pertenece (Banco de Proyectos, Banco de Programas, etc.), "
+                "la meta física comprometida y lo ejecutado. El avance se "
+                "reporta en unidades físicas (no en pesos): qué tanto del "
+                "producto o servicio comprometido se entregó."
             ))
 
-    df_proy = construir_proyectos(datos, filtro_vigencia).to_pandas()
+    df_proy = construir_dataframe_proyectos_listo(datos, filtro_vigencia)
+
+    # ---- Botones de descarga (siempre visibles arriba) ----
+    st.markdown("##### Descargar inventario")
+    dl1, dl2, _ = st.columns([1, 1, 2])
+
+    with dl1:
+        if not df_proy.empty:
+            cols_export = [
+                "Codigo Meta", "Línea Estratégica", "Sector PDD", "Programa PDD",
+                "Nombre del Proyecto", "BPIN", "Indicador", "Tipo de Banco",
+                "Meta", "Ejecutado", "Avance",
+            ]
+            df_export_vig = df_proy.reindex(columns=[c for c in cols_export if c in df_proy.columns])
+            xlsx_vig = generar_excel_proyectos(
+                df_export_vig,
+                titulo=f"Proyectos y Gestiones — Vigencia {filtro_vigencia}",
+                subtitulo=f"Inventario completo extraído del Plan Indicativo",
+            )
+            st.download_button(
+                f"Descargar vigencia {filtro_vigencia}",
+                data=xlsx_vig,
+                file_name=f"proyectos_{filtro_vigencia}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_proy_vig",
+                use_container_width=True,
+            )
+        else:
+            st.button(f"Descargar vigencia {filtro_vigencia}", disabled=True,
+                      use_container_width=True, key="dl_proy_vig_disabled")
+
+    with dl2:
+        # Consolidado de las cuatro vigencias del Plan
+        try:
+            partes = []
+            for v in ["2024", "2025", "2026", "2027"]:
+                df_v = construir_dataframe_proyectos_listo(datos, v)
+                if not df_v.empty:
+                    df_v = df_v.copy()
+                    df_v.insert(0, "Vigencia PI", v)
+                    partes.append(df_v)
+            if partes:
+                df_consol = pd.concat(partes, ignore_index=True)
+                cols_consol = [
+                    "Vigencia PI", "Codigo Meta", "Línea Estratégica", "Sector PDD",
+                    "Programa PDD", "Nombre del Proyecto", "BPIN", "Indicador",
+                    "Tipo de Banco", "Meta", "Ejecutado", "Avance",
+                ]
+                df_consol = df_consol.reindex(columns=[c for c in cols_consol if c in df_consol.columns])
+                xlsx_all = generar_excel_proyectos(
+                    df_consol,
+                    titulo="Proyectos y Gestiones — Consolidado del Cuatrienio",
+                    subtitulo="Inventario unificado de todas las vigencias del Plan (2024–2027)",
+                )
+                st.download_button(
+                    "Descargar todas las vigencias",
+                    data=xlsx_all,
+                    file_name="proyectos_2024-2027.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_proy_all",
+                    use_container_width=True,
+                )
+            else:
+                st.button("Descargar todas las vigencias", disabled=True,
+                          use_container_width=True, key="dl_proy_all_disabled")
+        except Exception as e:
+            st.error(f"No se pudo generar el consolidado: {e}")
+
+    st.markdown("<hr/>", unsafe_allow_html=True)
 
     if df_proy.empty:
         st.info(f"No hay proyectos ni gestiones registrados para la vigencia {filtro_vigencia}.")
@@ -2865,38 +3097,20 @@ with tab5:
 
         st.caption(f"Mostrando {len(df_proy_f):,} proyectos/gestiones")
 
-        # Calcular avance físico por fila
-        df_tabla_proy = df_proy_f.copy()
-        df_tabla_proy["Avance"] = df_tabla_proy.apply(
-            lambda r: (r["Ejecutado"] / r["Meta"])
-            if pd.notna(r["Meta"]) and pd.notna(r["Ejecutado"]) and r["Meta"] != 0
-            else None,
-            axis=1,
-        )
-
         columnas_proy = [
             {"key": "Codigo Meta", "label": "Meta", "type": "text"},
             {"key": "Nombre del Proyecto", "label": "Proyecto / Gestión", "type": "text"},
             {"key": "BPIN", "label": "BPIN", "type": "text"},
+            {"key": "Indicador", "label": "Indicador de Producto", "type": "text"},
             {"key": "Tipo de Banco", "label": "Banco", "type": "text"},
             {"key": "Meta", "label": "Meta física", "type": "num2"},
             {"key": "Ejecutado", "label": "Ejecutado", "type": "num2"},
             {"key": "Avance", "label": "Avance", "type": "pctbar"},
-            {"key": "Estado en portafolio", "label": "Estado", "type": "text"},
         ]
-        render_table(df_tabla_proy.head(200), columnas_proy)
+        render_table(df_proy_f.head(200), columnas_proy)
 
         if len(df_proy_f) > 200:
-            st.caption("La tabla muestra los primeros 200 registros. Descarga el CSV para el listado completo.")
-
-        csv_proy = df_proy_f.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "Descargar proyectos en CSV",
-            data=csv_proy,
-            file_name=f"proyectos_{filtro_vigencia}.csv",
-            mime="text/csv",
-            key="dl_proyectos",
-        )
+            st.caption("La tabla muestra los primeros 200 registros. Usa los botones de descarga para el listado completo.")
 
 # -----------------------------------------------------------------
 # 06. DETALLE POR META
