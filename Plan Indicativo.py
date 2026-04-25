@@ -117,6 +117,19 @@ footer {{ visibility: hidden; }}
 /* Menú hamburguesa oculto sin tocar el resto del header */
 #MainMenu {{ visibility: hidden; }}
 
+/* Reducir el padding del contenedor principal para aprovechar más el ancho.
+   Streamlit usa por defecto ~6rem de padding lateral, demasiado para una
+   pantalla con sidebar lateral. Lo bajamos para que las tarjetas KPI no
+   queden estrechas y los gráficos respiren mejor. */
+.main .block-container,
+[data-testid="stMain"] .block-container,
+[data-testid="stAppViewContainer"] .block-container {{
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+    padding-top: 2rem !important;
+    max-width: 100% !important;
+}}
+
 /* Sidebar */
 [data-testid="stSidebar"] {{
     background: linear-gradient(180deg, var(--blue-dark) 0%, #00284a 100%);
@@ -168,29 +181,38 @@ footer {{ visibility: hidden; }}
     background: #fff;
     border: 1px solid var(--hairline);
     border-left: 3px solid var(--blue);
-    padding: 1.1rem 1.25rem;
+    padding: 0.9rem 1rem;
     border-radius: 2px;
     box-shadow: 0 1px 0 rgba(13,27,42,0.03);
+    overflow: hidden;
 }}
 [data-testid="stMetric"] [data-testid="stMetricLabel"] {{
     font-family: '{FONT_HEADING}', sans-serif !important;
     font-size: 0.68rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     color: var(--ink-mute) !important;
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }}
 [data-testid="stMetric"] [data-testid="stMetricValue"] {{
     font-family: '{FONT_DISPLAY}', '{FONT_HEADING}', Helvetica, sans-serif !important;
     font-weight: 400 !important;
-    font-size: 2.2rem !important;
+    font-size: 1.7rem !important;
     color: var(--ink) !important;
-    letter-spacing: -0.01em;
-    line-height: 1.1;
+    letter-spacing: -0.015em;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: visible;
+}}
+[data-testid="stMetric"] [data-testid="stMetricValue"] > div {{
+    overflow: visible !important;
 }}
 [data-testid="stMetric"] [data-testid="stMetricDelta"] {{
     font-family: '{FONT_MONO}', monospace !important;
-    font-size: 0.82rem !important;
+    font-size: 0.78rem !important;
     color: var(--green-light) !important;
 }}
 
@@ -688,104 +710,108 @@ def seccion(numero: str, titulo: str, kicker: str = "", tooltip: str = ""):
 TOOLTIPS = {
     # KPIs de cabecera
     "prog_vigencia": (
-        "Suma de la programación financiera de todas las metas para la vigencia "
-        "seleccionada. Incluye las 10 fuentes: ICLD, ICDE, SGP (Educación, Salud, "
-        "APSB), Regalías, Cofinanciación Nación y Municipio, Crédito y Otras Fuentes. "
-        "Se toma directamente de las columnas 'Programación ...' del Plan Indicativo."
+        "Total de recursos que el Plan Indicativo tiene presupuestados para la "
+        "vigencia, sumando todas las fuentes de financiación: recursos propios "
+        "(ICLD e ICDE), Sistema General de Participaciones (Educación, Salud y "
+        "APSB), Regalías, cofinanciación de la Nación y de Municipios, crédito "
+        "y otras fuentes."
     ),
     "ejec_vigencia": (
-        "Suma del valor pagado/ejecutado (RP) de la vigencia seleccionada, consolidando "
-        "todas las fuentes financieras. En 2025 incluye 9 archivos: Hacienda, Regalías, "
-        "Aguas de Sucre (recursos propios y regalías), Gestiones, PDET, Fondo Mixto e "
-        "Indersucre (territorial y regalías). Para metas múltiples separadas por '|', "
-        "el RP se atribuye a cada meta tras el explode."
+        "Recursos efectivamente pagados durante la vigencia. Consolida la "
+        "información de Hacienda, Regalías y entidades adscritas. Para 2025 "
+        "se incluyen además Aguas de Sucre, Gestiones, PDET, Fondo Mixto e "
+        "Indersucre, que reportan su ejecución por separado."
     ),
     "avance_vigencia": (
-        "Ejecución / Programación de la vigencia. Mide qué porcentaje del presupuesto "
-        "programado se ha ejecutado efectivamente."
+        "Qué porcentaje del presupuesto programado se ha pagado efectivamente "
+        "en la vigencia. Es la relación entre lo ejecutado y lo programado."
     ),
     "prog_cuatrienio": (
-        "Suma de la programación financiera de las cuatro vigencias del PDD "
-        "(2024 + 2025 + 2026 + 2027) para todas las metas y todas las fuentes."
+        "Recursos totales que el Plan Indicativo proyecta invertir en los "
+        "cuatro años del Plan de Desarrollo (2024-2027), considerando todas "
+        "las fuentes de financiación."
     ),
     "ejec_acumulada": (
-        "Suma de la ejecución financiera de las vigencias ya cerradas o en curso "
-        "(2024 + 2025 + 2026). No incluye 2027 porque aún no ha iniciado."
+        "Suma de los recursos pagados desde el inicio del Plan hasta la "
+        "vigencia actual. Acumula la ejecución de 2024, 2025 y 2026. No "
+        "incluye 2027 porque aún no ha iniciado."
     ),
     "avance_cuatrienio": (
-        "Ejecución acumulada (2024-2026) sobre la programación total del cuatrienio "
-        "(2024-2027). Da una visión global del avance del Plan."
+        "Qué porcentaje del Plan de Desarrollo se ha ejecutado financieramente "
+        "hasta el momento. Compara la ejecución acumulada contra la "
+        "programación total del cuatrienio."
     ),
 
     # Avances físicos
     "avance_vig_ponderado": (
-        "Avance físico ponderado de la vigencia. Para cada programa PDD se calcula "
-        "el promedio del % de ejecución de sus metas. Luego se pondera ese promedio "
-        "por el peso del programa (n° de metas con programación / total de metas "
-        "con programación). La suma de todos los aportes da el avance global."
+        "Mide qué tanto se han cumplido las metas del Plan en la vigencia. "
+        "Es un promedio ponderado donde cada programa aporta según el número "
+        "de metas que tiene programadas; los programas con más metas pesan "
+        "proporcionalmente más en el resultado global."
     ),
     "avance_cuatrienio_ponderado": (
-        "Avance físico ponderado del cuatrienio. Similar al de la vigencia, pero "
-        "usando el % de ejecución acumulada y ponderando por el total de metas "
-        "(no solo las programadas en una vigencia particular)."
+        "Cumplimiento global de las metas físicas del Plan considerando todo "
+        "el cuatrienio, no solo la vigencia actual. Cada programa aporta "
+        "según el peso que tiene dentro del Plan."
     ),
     "eficacia_operativa": (
-        "Indicador que normaliza el aporte de cada Línea/Sector por el peso "
-        "relativo que tiene en el total de indicadores. Fórmula: % Aporte PDD ÷ "
-        "(Indicadores con programación de la línea/sector ÷ Total indicadores con "
-        "programación). Permite comparar dependencias con distinto número de metas."
+        "Mide qué tan eficientes son las líneas y sectores en cumplir sus "
+        "metas, ajustando por su tamaño relativo. Permite comparar de forma "
+        "justa dependencias con muchas metas frente a otras con pocas: una "
+        "línea con pocas metas pero alto cumplimiento puede tener mejor "
+        "eficacia operativa que otra con muchas metas y bajo cumplimiento."
     ),
     "aporte_pdd": (
-        "Suma ponderada del avance físico que aporta una Línea o Sector al "
-        "cumplimiento global del PDD. Calculado como Σ (avance promedio del "
-        "programa × peso del programa)."
+        "Cuánto contribuye una Línea Estratégica o un Sector al cumplimiento "
+        "global del Plan de Desarrollo. Combina el nivel de avance de la "
+        "agrupación con su peso dentro del total de metas."
     ),
 
     # Tablas financieras
     "ejec_clasif_recursos": (
-        "Suma del RP por clasificación de recursos (ICLD, ICDE, SGP, Regalías, etc.) "
-        "para la vigencia seleccionada. En 2025 se aplica explode por '|' para que "
-        "el RP de filas con múltiples metas se cuente una vez por cada meta asociada."
+        "Recursos pagados durante la vigencia, agrupados por el tipo de "
+        "fuente que los financia (ICLD, ICDE, SGP, Regalías, Cofinanciación, "
+        "Crédito u Otras Fuentes)."
     ),
     "porcentaje_ejecucion_financiera": (
-        "Ejecución / Programación por fuente. Mide el grado de utilización de cada "
-        "tipo de recurso. Si la programación es 0, el porcentaje se reporta como 0."
+        "Qué tanto se ha utilizado cada tipo de recurso en relación con lo "
+        "que se tenía programado."
     ),
 
     # Distribución
     "distribucion_metas": (
-        "Suma de la 'Meta Física Esperada' de cada vigencia, dividida entre la suma "
-        "total del 'Meta de cuatrienio'. Indica qué porción del cuatrienio se planea "
-        "cumplir en cada año."
+        "Indica cómo está repartida la programación física del Plan entre "
+        "los cuatro años. Compara cuánto se planea cumplir en cada vigencia "
+        "frente a la meta total del cuatrienio."
     ),
 
     # Dependencia
     "metas_programadas": (
-        "Número de metas físicas con programación distinta de cero en la vigencia, "
-        "asignadas a la dependencia."
+        "Cantidad de metas físicas que la dependencia tiene asignadas y para "
+        "las cuales hay un valor a cumplir en la vigencia."
     ),
     "metas_cumplidas_100": (
-        "Metas cuya 'Categoría de Ejecución Física' fue 'Superior' en la vigencia "
-        "(es decir, alcanzaron o superaron el 100% del avance esperado)."
+        "Metas que alcanzaron o superaron el 100% del avance esperado en la "
+        "vigencia (categoría 'Superior')."
     ),
     "porcentaje_ejec_dependencia": (
-        "Promedio simple del % de ejecución física de las metas asignadas a la "
-        "dependencia, considerando solo las que tienen programación en la vigencia."
+        "Avance promedio de las metas asignadas a la dependencia en la "
+        "vigencia. Considera solo las metas con programación para ese año."
     ),
     "porcentaje_ejec_acumulada_dependencia": (
-        "Promedio simple del % de ejecución acumulada (cuatrienio) de TODAS las "
-        "metas asignadas a la dependencia, sin filtrar por vigencia."
+        "Avance promedio acumulado (cuatrienio) de todas las metas asignadas "
+        "a la dependencia, considerando los años transcurridos del Plan."
     ),
 
     # Proyectos
     "total_proyectos_gestiones": (
-        "Cantidad total de proyectos y gestiones extraídos del campo de texto "
-        "'PROYECTOS {vigencia}' del Plan Indicativo. Se separan por bloques (\\n\\n) "
-        "y se extraen BPIN, banco, meta física, ejecutado y estado mediante regex."
+        "Cantidad de proyectos y gestiones registrados en el Plan Indicativo "
+        "para la vigencia. Incluye iniciativas tanto de ejecución directa "
+        "como de gestión de recursos."
     ),
     "avance_proyecto": (
-        "Ejecutado / Meta física del proyecto. Refleja el porcentaje de cumplimiento "
-        "físico, no monetario. Si la meta es 0 o no está informada, no se calcula."
+        "Porcentaje de cumplimiento físico del proyecto: qué tanto se ha "
+        "ejecutado frente a la meta planeada (en unidades físicas, no en pesos)."
     ),
 }
 
@@ -2309,13 +2335,13 @@ with tab1:
     seccion("01", "Ejecución Física",
             "Avance ponderado del cumplimiento de metas físicas del Plan de Desarrollo.",
             tooltip=(
-                "Mide el avance físico (no monetario) de las metas. Cada programa "
-                "PDD aporta al cumplimiento global con un peso = (n° de metas con "
-                "programación) / (total de metas con programación). El avance "
-                "ponderado total = Σ (avance_promedio_programa × peso_programa). "
-                "La 'Eficacia Operativa' por línea/sector divide ese aporte por la "
-                "proporción de indicadores que tiene cada agrupación, normalizando "
-                "por tamaño relativo."
+                "Mide qué tanto se han cumplido las metas del Plan en términos "
+                "físicos, no monetarios. El avance global se construye combinando "
+                "el desempeño de cada programa con su peso dentro del Plan: los "
+                "programas con más metas pesan más en el resultado. La 'Eficacia "
+                "Operativa' permite comparar líneas y sectores ajustando por su "
+                "tamaño relativo, de modo que dependencias pequeñas con buen "
+                "desempeño no quedan invisibilizadas frente a las más grandes."
             ))
 
     k1, k2 = st.columns(2)
@@ -2418,14 +2444,13 @@ with tab2:
     seccion("02", "Ejecución Financiera",
             "Comportamiento de recursos programados frente a ejecutados por fuente y categoría del PDD.",
             tooltip=(
-                "Programación: suma de las 10 columnas 'Programación ...' del Plan "
-                "Indicativo (ICLD, ICDE, SGP en sus tres ramas, Regalías, "
-                "Cofinanciaciones, Crédito y Otras Fuentes). Ejecución: suma del "
-                "RP pagado, consolidado de los archivos de Hacienda, Regalías y "
-                "fuentes adicionales (en 2025 incluye Aguas de Sucre, Gestiones, "
-                "PDET, Fondo Mixto e Indersucre). Para metas con código múltiple "
-                "separadas por '|' se aplica explode antes de agrupar. % Ejecución "
-                "= Ejecución / Programación por fuente y por vigencia."
+                "Compara los recursos presupuestados frente a los efectivamente "
+                "pagados. La programación reúne las diez fuentes de financiación "
+                "del Plan (recursos propios, SGP, Regalías, cofinanciaciones, "
+                "crédito y otras). La ejecución consolida los reportes de "
+                "Hacienda, Regalías y, para 2025, también los de Aguas de Sucre, "
+                "Gestiones, PDET, Fondo Mixto e Indersucre. El % de ejecución "
+                "indica qué tanto se ha utilizado de cada fuente."
             ))
 
     sub_v, sub_c = st.tabs([f"Vigencia {filtro_vigencia}", "Cuatrienio"])
@@ -2659,11 +2684,12 @@ with tab3:
     seccion("03", "Distribución de Metas",
             "Peso relativo de la programación física en cada vigencia del cuatrienio.",
             tooltip=(
-                "Para cada vigencia se calcula: Σ Meta Física Esperada {año} / "
-                "Σ Meta de cuatrienio. El resultado indica qué fracción del "
-                "compromiso total del PDD se planea cumplir en ese año. La suma "
-                "de los cuatro años no necesariamente da 100% porque algunas "
-                "metas son acumulativas y otras son flujos anuales."
+                "Muestra cómo se reparte el cumplimiento físico del Plan entre "
+                "los cuatro años: cuánto se planea cumplir cada vigencia frente "
+                "a la meta total del cuatrienio. La suma de los porcentajes "
+                "puede no dar exactamente 100% porque algunas metas son "
+                "acumulativas y otras corresponden a flujos que se reinician "
+                "cada año."
             ))
 
     prog_ff = datos["prog_fisica_financiera"]
@@ -2725,13 +2751,13 @@ with tab4:
     seccion("04", "Ejecución por Dependencia",
             "Desempeño de las dependencias responsables de la ejecución del Plan de Desarrollo.",
             tooltip=(
-                "Para cada dependencia (después de homologar nombres en la tabla "
-                "HomologacionSecretarias): Metas Programadas = n° de metas con "
-                "Meta Física Esperada > 0 en la vigencia. Metas Cumplidas al 100% "
-                "= n° de metas con CATEGORÍA DE EJECUCIÓN = 'Superior'. % Avance "
-                "vigencia = promedio simple de los % de ejecución de las metas "
-                "programadas. % Avance acumulado = promedio simple del % de "
-                "ejecución acumulada de TODAS las metas asignadas a la dependencia."
+                "Para cada secretaría o dependencia se reporta cuántas metas "
+                "tiene programadas en la vigencia, cuántas alcanzaron el 100% "
+                "(categoría 'Superior'), su avance promedio en la vigencia y su "
+                "avance promedio acumulado del cuatrienio. Las dependencias se "
+                "homologan según la tabla oficial del Plan Indicativo, que "
+                "permite agrupar variantes de nombre y, cuando aplica, marcar "
+                "responsabilidades compartidas entre varias secretarías."
             ))
 
     df_dep = ejec_dependencia.to_pandas()
@@ -2782,13 +2808,13 @@ with tab5:
             "Inventario de proyectos y gestiones asociadas a las metas del Plan de Desarrollo, "
             "extraídos de la columna de texto del Plan Indicativo.",
             tooltip=(
-                "Los proyectos se extraen del campo 'PROYECTOS {vigencia}' del "
-                "Plan Indicativo, separando por dobles saltos de línea. De cada "
-                "bloque se extraen mediante regex: BPIN, Tipo de Banco, Meta "
-                "física, Ejecutado, Estado en portafolio. Las cifras son "
-                "FÍSICAS (no monetarias). Avance = Ejecutado / Meta. "
-                "Tipo de Banco se obtiene del literal '(Tipo de Banco: ...)' "
-                "presente en el texto del proyecto."
+                "Lista los proyectos y gestiones registrados para la vigencia "
+                "en el Plan Indicativo. De cada uno se extraen el código BPIN, "
+                "el tipo de banco al que pertenece (Banco de Proyectos, Banco "
+                "de Programas, etc.), la meta física comprometida, lo "
+                "ejecutado y el estado en portafolio. El avance se reporta en "
+                "unidades físicas (no en pesos): qué tanto del producto o "
+                "servicio comprometido se entregó."
             ))
 
     df_proy = construir_proyectos(datos, filtro_vigencia).to_pandas()
@@ -2880,13 +2906,12 @@ with tab6:
             "Consulta del inventario completo de indicadores de producto del Plan Indicativo, "
             "enfocado en el avance físico por meta y vigencia.",
             tooltip=(
-                "Tabla de granularidad meta a meta. 'Meta cuatrienio' es el "
-                "objetivo total al 2027. 'Meta {vigencia}' es la programación "
-                "para la vigencia seleccionada. 'Ejecución {vigencia}' es el "
-                "valor físico alcanzado. 'Avance {vigencia}' = Ejecución / Meta "
-                "de esa vigencia. 'Avance acumulado' integra todas las vigencias "
-                "transcurridas. La 'Categoría' clasifica el avance como Superior, "
-                "Satisfactorio, Aceptable, Bajo o Crítico."
+                "Tabla con el detalle de cada meta del Plan: el objetivo del "
+                "cuatrienio, lo programado para la vigencia, lo ejecutado, el "
+                "avance del año y el avance acumulado. La columna 'Categoría' "
+                "clasifica el desempeño en cinco niveles: Superior, "
+                "Satisfactorio, Aceptable, Bajo o Crítico, según el porcentaje "
+                "de cumplimiento alcanzado."
             ))
 
     prog_ff = datos["prog_fisica_financiera"]
