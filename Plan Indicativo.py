@@ -78,11 +78,11 @@ CSS = f"""
     --brown:       {COLORS["brown"]};
     --coral:       {COLORS["coral"]};
 
-    --paper:       #fcfcfb;
+    --paper:       #ffffff;
     --ink:         #0d1b2a;
     --ink-mute:    #4a5a6a;
-    --hairline:    #e2e0d8;
-    --chip-bg:     #f3f1ec;
+    --hairline:    #e3e3e1;
+    --chip-bg:     #f1f1ef;
 }}
 
 /* Base tipográfica */
@@ -484,10 +484,10 @@ hr {{
     color: var(--ink);
 }}
 .institutional-table tbody tr:nth-child(even) {{
-    background: #f7f7f4;
+    background: #f6f6f5;
 }}
 .institutional-table tbody tr:hover {{
-    background: #f0eee9;
+    background: #ededeb;
 }}
 .institutional-table tbody tr:last-child td {{
     border-bottom: none;
@@ -495,7 +495,7 @@ hr {{
 .institutional-table tfoot td {{
     font-family: '{FONT_HEADING}', sans-serif;
     font-weight: 700;
-    background: #f0eee9;
+    background: #ededeb;
     padding: 0.75rem 0.9rem;
     border-top: 2px solid var(--blue-dark);
     color: var(--blue-dark);
@@ -580,12 +580,12 @@ corporate_template.layout = go.Layout(
     plot_bgcolor="white",
     colorway=CORPORATE_SEQUENCE,
     xaxis=dict(
-        gridcolor="#ebe9e1", linecolor="#c5c2b6", zerolinecolor="#ebe9e1",
+        gridcolor="#ececea", linecolor="#c8c8c5", zerolinecolor="#ececea",
         ticks="outside", tickfont=dict(size=11, color="#4a5a6a"),
         title=dict(font=dict(size=11, color="#4a5a6a")),
     ),
     yaxis=dict(
-        gridcolor="#ebe9e1", linecolor="#c5c2b6", zerolinecolor="#ebe9e1",
+        gridcolor="#ececea", linecolor="#c8c8c5", zerolinecolor="#ececea",
         ticks="outside", tickfont=dict(size=11, color="#4a5a6a"),
         title=dict(font=dict(size=11, color="#4a5a6a")),
     ),
@@ -2482,13 +2482,12 @@ st.markdown("<hr/>", unsafe_allow_html=True)
 # =========================================================================
 # Pestañas
 # =========================================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Ejecución Física",
     "Ejecución Financiera",
     "Distribución de Metas",
     "Ejecución por Dependencia",
     "Proyectos",
-    "Detalle por Meta",
     "Exportar",
 ])
 
@@ -3113,92 +3112,11 @@ with tab5:
             st.caption("La tabla muestra los primeros 200 registros. Usa los botones de descarga para el listado completo.")
 
 # -----------------------------------------------------------------
-# 06. DETALLE POR META
+# -----------------------------------------------------------------
+# 06. EXPORTAR
 # -----------------------------------------------------------------
 with tab6:
-    seccion("06", "Detalle por Meta",
-            "Consulta del inventario completo de indicadores de producto del Plan Indicativo, "
-            "enfocado en el avance físico por meta y vigencia.",
-            tooltip=(
-                "Tabla con el detalle de cada meta del Plan: el objetivo del "
-                "cuatrienio, lo programado para la vigencia, lo ejecutado, el "
-                "avance del año y el avance acumulado. La columna 'Categoría' "
-                "clasifica el desempeño en cinco niveles: Superior, "
-                "Satisfactorio, Aceptable, Bajo o Crítico, según el porcentaje "
-                "de cumplimiento alcanzado."
-            ))
-
-    prog_ff = datos["prog_fisica_financiera"]
-    df_all = prog_ff.to_pandas()
-
-    # ---- Filtros encadenados ----
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        lineas = ["(Todas)"] + sorted(df_all["Línea Estratégica"].dropna().unique().tolist())
-        sel_linea = st.selectbox("Línea Estratégica", lineas)
-    with f2:
-        df_temp = df_all if sel_linea == "(Todas)" else df_all[df_all["Línea Estratégica"] == sel_linea]
-        sectores = ["(Todos)"] + sorted(df_temp["Sector PDD"].dropna().unique().tolist())
-        sel_sector = st.selectbox("Sector PDD", sectores)
-    with f3:
-        df_temp2 = df_temp if sel_sector == "(Todos)" else df_temp[df_temp["Sector PDD"] == sel_sector]
-        programas = ["(Todos)"] + sorted(df_temp2["Programa PDD"].dropna().unique().tolist())
-        sel_programa = st.selectbox("Programa PDD", programas)
-
-    df_filt = df_all.copy()
-    if sel_linea != "(Todas)":
-        df_filt = df_filt[df_filt["Línea Estratégica"] == sel_linea]
-    if sel_sector != "(Todos)":
-        df_filt = df_filt[df_filt["Sector PDD"] == sel_sector]
-    if sel_programa != "(Todos)":
-        df_filt = df_filt[df_filt["Programa PDD"] == sel_programa]
-
-    # Normalizar el porcentaje acumulado a [0,1] para el pctbar
-    df_filt = df_filt.copy()
-
-    st.caption(f"Mostrando {len(df_filt):,} metas")
-
-    # Columnas presentadas: solo lo relevante para el avance físico
-    columnas_detalle = [
-        {"key": "Codigo Meta", "label": "Código", "type": "text"},
-        {"key": "Línea Estratégica", "label": "Línea", "type": "text"},
-        {"key": "Sector PDD", "label": "Sector", "type": "text"},
-        {"key": "Programa PDD", "label": "Programa", "type": "text"},
-        {"key": "Indicador de producto principal", "label": "Indicador", "type": "text"},
-        {"key": "Responsable", "label": "Responsable", "type": "text"},
-        {"key": "Meta de cuatrenio", "label": "Meta cuatrienio", "type": "num2"},
-        {"key": f"Meta Física Esperada {filtro_vigencia}", "label": f"Meta {filtro_vigencia}", "type": "num2"},
-        {"key": f"EJECUCIÓN {filtro_vigencia}", "label": f"Ejecución {filtro_vigencia}", "type": "num2"},
-        {"key": f"PORCENTAJE DE EJECUCIÓN {filtro_vigencia}", "label": f"Avance {filtro_vigencia}", "type": "pctbar"},
-        {"key": "EJECUCIÓN ACUMULADA", "label": "Ejec. acumulada", "type": "num2"},
-        {"key": "PORCENTAJE DE EJECUCIÓN ACUMULADA", "label": "Avance acumulado", "type": "pctbar"},
-        {"key": "CATEGORÍA DE EJECUCIÓN ACUMULADA", "label": "Categoría", "type": "text"},
-    ]
-
-    # Limite razonable para la tabla HTML
-    LIM = 150
-    render_table(df_filt.head(LIM), columnas_detalle)
-
-    if len(df_filt) > LIM:
-        st.caption(
-            f"La tabla muestra las primeras {LIM:,} metas. "
-            "Descarga el CSV para el listado completo."
-        )
-
-    # CSV con todas las columnas originales (por si se necesita el detalle completo)
-    csv_bytes = df_filt.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "Descargar CSV del detalle",
-        data=csv_bytes,
-        file_name=f"detalle_metas_{filtro_vigencia}.csv",
-        mime="text/csv",
-    )
-
-# -----------------------------------------------------------------
-# 07. EXPORTAR
-# -----------------------------------------------------------------
-with tab7:
-    seccion("07", "Exportar",
+    seccion("06", "Exportar",
             "Descarga un archivo Excel consolidado con toda la información del tablero, "
             "formateado con la identidad visual corporativa.")
 
