@@ -343,6 +343,26 @@ div[data-testid="stRadio"] > label {{
     margin-right: 0.8rem;
     font-weight: 500;
 }}
+.section-title .seccion-info {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--blue-dark);
+    color: #fff;
+    font-family: '{FONT_HEADING}', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-left: 0.7rem;
+    cursor: help;
+    vertical-align: middle;
+    transition: background 0.18s ease;
+}}
+.section-title .seccion-info:hover {{
+    background: var(--orange-deep);
+}}
 .section-kicker {{
     font-family: '{FONT_BODY}', sans-serif;
     font-size: 0.83rem;
@@ -638,13 +658,136 @@ def formato_entero(valor):
         return valor
 
 
-def seccion(numero: str, titulo: str, kicker: str = ""):
+def seccion(numero: str, titulo: str, kicker: str = "", tooltip: str = ""):
+    """Encabezado de sección numerado.
+
+    Si se pasa `tooltip`, aparece un ícono '?' al lado del título que muestra
+    la explicación detallada al pasar el mouse encima.
+    """
+    icono = ""
+    if tooltip:
+        # El atributo title de HTML produce un tooltip nativo del navegador,
+        # ligero y consistente con la estética minimalista del dashboard.
+        tooltip_safe = tooltip.replace('"', "&quot;")
+        icono = (
+            f'<span class="seccion-info" title="{tooltip_safe}">?</span>'
+        )
     st.markdown(
-        f'<div class="section-title"><span class="num">{numero}</span>{titulo}</div>',
+        f'<div class="section-title"><span class="num">{numero}</span>{titulo}{icono}</div>',
         unsafe_allow_html=True,
     )
     if kicker:
         st.markdown(f'<div class="section-kicker">{kicker}</div>', unsafe_allow_html=True)
+
+
+# =========================================================================
+# TOOLTIPS — explicaciones de cómo se calcula cada métrica
+# =========================================================================
+# Diccionario centralizado: cada clave corresponde a una métrica visible en
+# la app. El usuario verá estos textos al pasar el mouse sobre el ícono "?".
+TOOLTIPS = {
+    # KPIs de cabecera
+    "prog_vigencia": (
+        "Suma de la programación financiera de todas las metas para la vigencia "
+        "seleccionada. Incluye las 10 fuentes: ICLD, ICDE, SGP (Educación, Salud, "
+        "APSB), Regalías, Cofinanciación Nación y Municipio, Crédito y Otras Fuentes. "
+        "Se toma directamente de las columnas 'Programación ...' del Plan Indicativo."
+    ),
+    "ejec_vigencia": (
+        "Suma del valor pagado/ejecutado (RP) de la vigencia seleccionada, consolidando "
+        "todas las fuentes financieras. En 2025 incluye 9 archivos: Hacienda, Regalías, "
+        "Aguas de Sucre (recursos propios y regalías), Gestiones, PDET, Fondo Mixto e "
+        "Indersucre (territorial y regalías). Para metas múltiples separadas por '|', "
+        "el RP se atribuye a cada meta tras el explode."
+    ),
+    "avance_vigencia": (
+        "Ejecución / Programación de la vigencia. Mide qué porcentaje del presupuesto "
+        "programado se ha ejecutado efectivamente."
+    ),
+    "prog_cuatrienio": (
+        "Suma de la programación financiera de las cuatro vigencias del PDD "
+        "(2024 + 2025 + 2026 + 2027) para todas las metas y todas las fuentes."
+    ),
+    "ejec_acumulada": (
+        "Suma de la ejecución financiera de las vigencias ya cerradas o en curso "
+        "(2024 + 2025 + 2026). No incluye 2027 porque aún no ha iniciado."
+    ),
+    "avance_cuatrienio": (
+        "Ejecución acumulada (2024-2026) sobre la programación total del cuatrienio "
+        "(2024-2027). Da una visión global del avance del Plan."
+    ),
+
+    # Avances físicos
+    "avance_vig_ponderado": (
+        "Avance físico ponderado de la vigencia. Para cada programa PDD se calcula "
+        "el promedio del % de ejecución de sus metas. Luego se pondera ese promedio "
+        "por el peso del programa (n° de metas con programación / total de metas "
+        "con programación). La suma de todos los aportes da el avance global."
+    ),
+    "avance_cuatrienio_ponderado": (
+        "Avance físico ponderado del cuatrienio. Similar al de la vigencia, pero "
+        "usando el % de ejecución acumulada y ponderando por el total de metas "
+        "(no solo las programadas en una vigencia particular)."
+    ),
+    "eficacia_operativa": (
+        "Indicador que normaliza el aporte de cada Línea/Sector por el peso "
+        "relativo que tiene en el total de indicadores. Fórmula: % Aporte PDD ÷ "
+        "(Indicadores con programación de la línea/sector ÷ Total indicadores con "
+        "programación). Permite comparar dependencias con distinto número de metas."
+    ),
+    "aporte_pdd": (
+        "Suma ponderada del avance físico que aporta una Línea o Sector al "
+        "cumplimiento global del PDD. Calculado como Σ (avance promedio del "
+        "programa × peso del programa)."
+    ),
+
+    # Tablas financieras
+    "ejec_clasif_recursos": (
+        "Suma del RP por clasificación de recursos (ICLD, ICDE, SGP, Regalías, etc.) "
+        "para la vigencia seleccionada. En 2025 se aplica explode por '|' para que "
+        "el RP de filas con múltiples metas se cuente una vez por cada meta asociada."
+    ),
+    "porcentaje_ejecucion_financiera": (
+        "Ejecución / Programación por fuente. Mide el grado de utilización de cada "
+        "tipo de recurso. Si la programación es 0, el porcentaje se reporta como 0."
+    ),
+
+    # Distribución
+    "distribucion_metas": (
+        "Suma de la 'Meta Física Esperada' de cada vigencia, dividida entre la suma "
+        "total del 'Meta de cuatrienio'. Indica qué porción del cuatrienio se planea "
+        "cumplir en cada año."
+    ),
+
+    # Dependencia
+    "metas_programadas": (
+        "Número de metas físicas con programación distinta de cero en la vigencia, "
+        "asignadas a la dependencia."
+    ),
+    "metas_cumplidas_100": (
+        "Metas cuya 'Categoría de Ejecución Física' fue 'Superior' en la vigencia "
+        "(es decir, alcanzaron o superaron el 100% del avance esperado)."
+    ),
+    "porcentaje_ejec_dependencia": (
+        "Promedio simple del % de ejecución física de las metas asignadas a la "
+        "dependencia, considerando solo las que tienen programación en la vigencia."
+    ),
+    "porcentaje_ejec_acumulada_dependencia": (
+        "Promedio simple del % de ejecución acumulada (cuatrienio) de TODAS las "
+        "metas asignadas a la dependencia, sin filtrar por vigencia."
+    ),
+
+    # Proyectos
+    "total_proyectos_gestiones": (
+        "Cantidad total de proyectos y gestiones extraídos del campo de texto "
+        "'PROYECTOS {vigencia}' del Plan Indicativo. Se separan por bloques (\\n\\n) "
+        "y se extraen BPIN, banco, meta física, ejecutado y estado mediante regex."
+    ),
+    "avance_proyecto": (
+        "Ejecutado / Meta física del proyecto. Refleja el porcentaje de cumplimiento "
+        "físico, no monetario. Si la meta es 0 o no está informada, no se calcula."
+    ),
+}
 
 
 def programacion_financiera(vigencia: str):
@@ -1040,19 +1183,24 @@ def procesar_datos(
 # Constructores de reportes por vigencia
 # =========================================================================
 def construir_ejecucion_financ_tipo(datos, vigencia):
-    """Replica exactamente el bloque del notebook 'Ejecución Financiera por Clasificación de Recurso'.
+    """Ejecución por clasificación de recursos para la vigencia filtrada.
 
-    Nota: el notebook NO hace explode por '| ' aquí, aunque sí lo hace en el acumulado.
-    Esto es intencional: al agrupar por CLASIFICACIÓN RECURSOS, explotar por CODIGO META
-    duplicaría el RP bajo la misma fuente. Mantenemos la lógica del notebook.
+    En 2025 se aplica str.split(" | ").explode() ANTES de agrupar, igual que
+    en el bloque acumulado. Esto garantiza que los KPIs y la tabla de
+    'Por Clasificación de Recursos' reflejen el RP tras explode (la cifra
+    real validada con el notebook).
     """
     ejecuciones = datos["ejecuciones_financieras"][vigencia]
     orden_fuentes = datos["orden_fuentes"]
     prog_financ_tipo = datos["prog_financ_tipo"]
 
+    concat_ejec = pl.concat(ejecuciones, how="diagonal")
+    if vigencia == "2025":
+        concat_ejec = concat_ejec.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
+
     return (
         orden_fuentes.join(
-            pl.concat(ejecuciones, how="diagonal"),
+            concat_ejec,
             left_on="Clasificación Recursos", right_on="CLASIFICACIÓN RECURSOS", how="left",
         )
         .group_by("Clasificación Recursos").agg(pl.col("RP").sum().alias(f"Ejecución Financiera {vigencia}"))
@@ -1405,138 +1553,6 @@ def construir_proyectos(datos, vigencia):
         )
         .drop(col_proyecto)
     )
-
-
-# =========================================================================
-# Debug — desglose de la ejecución financiera 2025 por fuente
-# =========================================================================
-@st.cache_data(show_spinner=False)
-def debug_ejecucion_2025(
-    h25_bytes, r25_bytes,
-    ads_rp_25_bytes, ads_reg_25_bytes, gestiones_25_bytes,
-    fondo_mixto_25_bytes, inder_25_bytes,
-):
-    """Lee cada archivo de 2025 por separado y devuelve diagnóstico por fuente.
-
-    Útil para verificar que la app está leyendo exactamente los mismos
-    archivos que el notebook local. El total final debe coincidir con
-    'Ejecución Financiera 2025' que se ve en los KPIs.
-    """
-    fuentes_brutas = {}
-
-    # 1. Regalías 2025
-    fuentes_brutas["1. Regalías 2025"] = (
-        pl.read_excel(io.BytesIO(r25_bytes), table_name="Pagos_Regalias_2025")
-        .select("PAGOS REGALIAS", "CODIGO META", "CLASIFICACIÓN RECURSOS")
-        .rename({"PAGOS REGALIAS": "RP"})
-        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
-        .filter(pl.col("CODIGO META") != "")
-    )
-
-    # 2. Hacienda 2025
-    fuentes_brutas["2. Hacienda 2025"] = (
-        pl.read_excel(io.BytesIO(h25_bytes), table_name="EjecucionHaciendaDiciembre2025")
-        .with_columns(
-            pl.col("PROYECTO ARCHIVADO", "CODIGO META", "CLASIFICACIÓN RECURSOS", "SE VA A CARGAR EN PI").fill_null(pl.lit("")),
-            pl.when(pl.col("DISTRIBUIR DE FORMA EQUITATIVA") == "SI").then(pl.col("RP") / 2).otherwise(pl.col("RP")),
-        )
-        .filter(
-            pl.col("PROYECTO ARCHIVADO") == "",
-            pl.col("CODIGO META") != "",
-            pl.col("CLASIFICACIÓN RECURSOS") != "",
-            pl.col("SE VA A CARGAR EN PI") == "",
-        )
-        .select("CODIGO META", "CLASIFICACIÓN RECURSOS", "RP")
-    )
-
-    # 3. ADS - Recursos propios
-    fuentes_brutas["3. ADS — Recursos propios"] = (
-        pl.read_excel(io.BytesIO(ads_rp_25_bytes), table_name="PagosAguasDeSucre")
-        .select("VALOR DEL PAGO", "CLASIFICACIÓN RECURSOS", "CODIGO META")
-        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
-        .filter(pl.col("CODIGO META") != "")
-        .rename({"VALOR DEL PAGO": "RP"})
-    )
-
-    # 4. ADS - Regalías
-    fuentes_brutas["4. ADS — Regalías"] = (
-        pl.read_excel(io.BytesIO(ads_reg_25_bytes), table_name="RegaliasAguasDeSucre")
-        .select("CODIGO DE META", "CLASIFICACIÓN RECURSOS", "PAGOS")
-        .rename({"CODIGO DE META": "CODIGO META", "PAGOS": "RP"})
-        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
-        .filter(pl.col("CODIGO META") != "")
-    )
-
-    # 5. Gestiones
-    fuentes_brutas["5. Gestiones"] = (
-        pl.read_excel(io.BytesIO(gestiones_25_bytes), table_name="EjecucionGestiones")
-        .rename({"EJECUCION FINANCIERA": "RP"})
-    )
-
-    # 6. PDET
-    fuentes_brutas["6. PDET"] = (
-        pl.read_excel(io.BytesIO(h25_bytes), table_name="EjecucionPDET")
-        .select("EJECUCION FINANCIERA", "CODIGO META", "CLASIFICACIÓN RECURSOS")
-        .rename({"EJECUCION FINANCIERA": "RP"})
-    )
-
-    # 7. Fondo Mixto
-    fuentes_brutas["7. Fondo Mixto"] = (
-        pl.read_excel(io.BytesIO(fondo_mixto_25_bytes), table_name="EjecucionFinancieraFondoMixto")
-        .select("CLASIFICACIÓN RECURSOS", "EJECUCION FINANCIERA", "CODIGO META")
-        .rename({"EJECUCION FINANCIERA": "RP"})
-    )
-
-    # 8. Indersucre - Recursos Propios
-    fuentes_brutas["8. Indersucre — Recursos Propios"] = (
-        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERTerritorio")
-        .rename({"EJECUCION FINANCIERA": "RP"})
-    )
-
-    # 9. Indersucre - Regalías
-    fuentes_brutas["9. Indersucre — Regalías"] = (
-        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERRegalias")
-        .rename({"EJECUCION FINANCIERA": "RP"})
-    )
-
-    # Resumen por fuente
-    filas_resumen = []
-    for nombre, df in fuentes_brutas.items():
-        rp_crudo = df.select(pl.col("RP").sum()).item() or 0
-        df_explode = df.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
-        rp_explode = df_explode.select(pl.col("RP").sum()).item() or 0
-        n_multi = (
-            df.with_columns(pl.col("CODIGO META").str.split(" | ").list.len().alias("n"))
-            .filter(pl.col("n") > 1)
-            .height
-        )
-        filas_resumen.append({
-            "Fuente": nombre,
-            "Filas": df.height,
-            "Filas multi-meta": n_multi,
-            "RP crudo": rp_crudo,
-            "RP tras explode": rp_explode,
-            "Inflación": rp_explode - rp_crudo,
-        })
-
-    df_resumen = pd.DataFrame(filas_resumen)
-
-    # Total final replicando exactamente el flujo del notebook
-    concat_total = pl.concat(list(fuentes_brutas.values()), how="diagonal")
-    total_concat = concat_total.select(pl.col("RP").sum()).item() or 0
-    total_explode = (
-        concat_total
-        .with_columns(pl.col("CODIGO META").str.split(" | "))
-        .explode("CODIGO META")
-        .select(pl.col("RP").sum()).item() or 0
-    )
-
-    return {
-        "fuentes": fuentes_brutas,
-        "resumen": df_resumen,
-        "total_concat": total_concat,
-        "total_explode": total_explode,
-    }
 
 
 # =========================================================================
@@ -2262,10 +2278,14 @@ ejec_acum = ejec_acumulada_tipo.select(pl.col("Ejecución Financiera Acumulada")
 pct_cuatri = (ejec_acum / prog_cuatri) if prog_cuatri else 0
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric(f"Programación {filtro_vigencia}", formato_pesos(prog_vig))
-c2.metric(f"Ejecución {filtro_vigencia}", formato_pesos(ejec_vig), formato_porcentaje(pct_vig))
-c3.metric("Programación Cuatrienio", formato_pesos(prog_cuatri))
-c4.metric("Ejecución Acumulada", formato_pesos(ejec_acum), formato_porcentaje(pct_cuatri))
+c1.metric(f"Programación {filtro_vigencia}", formato_pesos(prog_vig),
+          help=TOOLTIPS["prog_vigencia"])
+c2.metric(f"Ejecución {filtro_vigencia}", formato_pesos(ejec_vig), formato_porcentaje(pct_vig),
+          help=TOOLTIPS["ejec_vigencia"])
+c3.metric("Programación Cuatrienio", formato_pesos(prog_cuatri),
+          help=TOOLTIPS["prog_cuatrienio"])
+c4.metric("Ejecución Acumulada", formato_pesos(ejec_acum), formato_porcentaje(pct_cuatri),
+          help=TOOLTIPS["ejec_acumulada"])
 
 st.markdown("<hr/>", unsafe_allow_html=True)
 
@@ -2287,13 +2307,24 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 # -----------------------------------------------------------------
 with tab1:
     seccion("01", "Ejecución Física",
-            "Avance ponderado del cumplimiento de metas físicas del Plan de Desarrollo.")
+            "Avance ponderado del cumplimiento de metas físicas del Plan de Desarrollo.",
+            tooltip=(
+                "Mide el avance físico (no monetario) de las metas. Cada programa "
+                "PDD aporta al cumplimiento global con un peso = (n° de metas con "
+                "programación) / (total de metas con programación). El avance "
+                "ponderado total = Σ (avance_promedio_programa × peso_programa). "
+                "La 'Eficacia Operativa' por línea/sector divide ese aporte por la "
+                "proporción de indicadores que tiene cada agrupación, normalizando "
+                "por tamaño relativo."
+            ))
 
     k1, k2 = st.columns(2)
     k1.metric(f"Avance ponderado — Vigencia {filtro_vigencia}",
-              formato_porcentaje(avances_fisicos["avance_vig_ponderado"] or 0))
+              formato_porcentaje(avances_fisicos["avance_vig_ponderado"] or 0),
+              help=TOOLTIPS["avance_vig_ponderado"])
     k2.metric("Avance ponderado — Cuatrienio",
-              formato_porcentaje(avances_fisicos["avance_cuatrienio_total"] or 0))
+              formato_porcentaje(avances_fisicos["avance_cuatrienio_total"] or 0),
+              help=TOOLTIPS["avance_cuatrienio_ponderado"])
 
     st.markdown(" ")
     sub_v, sub_c = st.tabs([f"Vigencia {filtro_vigencia}", "Cuatrienio"])
@@ -2385,15 +2416,28 @@ with tab1:
 # -----------------------------------------------------------------
 with tab2:
     seccion("02", "Ejecución Financiera",
-            "Comportamiento de recursos programados frente a ejecutados por fuente y categoría del PDD.")
+            "Comportamiento de recursos programados frente a ejecutados por fuente y categoría del PDD.",
+            tooltip=(
+                "Programación: suma de las 10 columnas 'Programación ...' del Plan "
+                "Indicativo (ICLD, ICDE, SGP en sus tres ramas, Regalías, "
+                "Cofinanciaciones, Crédito y Otras Fuentes). Ejecución: suma del "
+                "RP pagado, consolidado de los archivos de Hacienda, Regalías y "
+                "fuentes adicionales (en 2025 incluye Aguas de Sucre, Gestiones, "
+                "PDET, Fondo Mixto e Indersucre). Para metas con código múltiple "
+                "separadas por '|' se aplica explode antes de agrupar. % Ejecución "
+                "= Ejecución / Programación por fuente y por vigencia."
+            ))
 
     sub_v, sub_c = st.tabs([f"Vigencia {filtro_vigencia}", "Cuatrienio"])
 
     with sub_v:
         k1, k2, k3 = st.columns(3)
-        k1.metric("Programación", formato_pesos(prog_vig))
-        k2.metric("Ejecución", formato_pesos(ejec_vig))
-        k3.metric("Avance", formato_porcentaje(pct_vig))
+        k1.metric("Programación", formato_pesos(prog_vig),
+                  help=TOOLTIPS["prog_vigencia"])
+        k2.metric("Ejecución", formato_pesos(ejec_vig),
+                  help=TOOLTIPS["ejec_vigencia"])
+        k3.metric("Avance", formato_porcentaje(pct_vig),
+                  help=TOOLTIPS["avance_vigencia"])
 
         # --- Por clasificación de recursos ---
         st.markdown("##### Por Clasificación de Recursos")
@@ -2554,9 +2598,12 @@ with tab2:
 
     with sub_c:
         k1, k2, k3 = st.columns(3)
-        k1.metric("Programación Cuatrienio", formato_pesos(prog_cuatri))
-        k2.metric("Ejecución Acumulada", formato_pesos(ejec_acum))
-        k3.metric("Avance", formato_porcentaje(pct_cuatri))
+        k1.metric("Programación Cuatrienio", formato_pesos(prog_cuatri),
+                  help=TOOLTIPS["prog_cuatrienio"])
+        k2.metric("Ejecución Acumulada", formato_pesos(ejec_acum),
+                  help=TOOLTIPS["ejec_acumulada"])
+        k3.metric("Avance", formato_porcentaje(pct_cuatri),
+                  help=TOOLTIPS["avance_cuatrienio"])
 
         vista = selector_vista("vista_fin_cuatri")
         df_acum = ejec_acumulada_tipo.to_pandas()
@@ -2610,7 +2657,14 @@ with tab2:
 # -----------------------------------------------------------------
 with tab3:
     seccion("03", "Distribución de Metas",
-            "Peso relativo de la programación física en cada vigencia del cuatrienio.")
+            "Peso relativo de la programación física en cada vigencia del cuatrienio.",
+            tooltip=(
+                "Para cada vigencia se calcula: Σ Meta Física Esperada {año} / "
+                "Σ Meta de cuatrienio. El resultado indica qué fracción del "
+                "compromiso total del PDD se planea cumplir en ese año. La suma "
+                "de los cuatro años no necesariamente da 100% porque algunas "
+                "metas son acumulativas y otras son flujos anuales."
+            ))
 
     prog_ff = datos["prog_fisica_financiera"]
     programacion_cuatrienio = prog_ff.select(pl.col("Meta de cuatrenio").sum()).item() or 1
@@ -2669,7 +2723,16 @@ with tab3:
 # -----------------------------------------------------------------
 with tab4:
     seccion("04", "Ejecución por Dependencia",
-            "Desempeño de las dependencias responsables de la ejecución del Plan de Desarrollo.")
+            "Desempeño de las dependencias responsables de la ejecución del Plan de Desarrollo.",
+            tooltip=(
+                "Para cada dependencia (después de homologar nombres en la tabla "
+                "HomologacionSecretarias): Metas Programadas = n° de metas con "
+                "Meta Física Esperada > 0 en la vigencia. Metas Cumplidas al 100% "
+                "= n° de metas con CATEGORÍA DE EJECUCIÓN = 'Superior'. % Avance "
+                "vigencia = promedio simple de los % de ejecución de las metas "
+                "programadas. % Avance acumulado = promedio simple del % de "
+                "ejecución acumulada de TODAS las metas asignadas a la dependencia."
+            ))
 
     df_dep = ejec_dependencia.to_pandas()
 
@@ -2717,7 +2780,16 @@ with tab4:
 with tab5:
     seccion("05", "Proyectos",
             "Inventario de proyectos y gestiones asociadas a las metas del Plan de Desarrollo, "
-            "extraídos de la columna de texto del Plan Indicativo.")
+            "extraídos de la columna de texto del Plan Indicativo.",
+            tooltip=(
+                "Los proyectos se extraen del campo 'PROYECTOS {vigencia}' del "
+                "Plan Indicativo, separando por dobles saltos de línea. De cada "
+                "bloque se extraen mediante regex: BPIN, Tipo de Banco, Meta "
+                "física, Ejecutado, Estado en portafolio. Las cifras son "
+                "FÍSICAS (no monetarias). Avance = Ejecutado / Meta. "
+                "Tipo de Banco se obtiene del literal '(Tipo de Banco: ...)' "
+                "presente en el texto del proyecto."
+            ))
 
     df_proy = construir_proyectos(datos, filtro_vigencia).to_pandas()
 
@@ -2736,7 +2808,8 @@ with tab5:
         tipos_top = conteo_bancos.head(3)
 
         columnas_kpi = st.columns(1 + len(tipos_top))
-        columnas_kpi[0].metric("Total proyectos/gestiones", formato_entero(total_registros))
+        columnas_kpi[0].metric("Total proyectos/gestiones", formato_entero(total_registros),
+                               help=TOOLTIPS["total_proyectos_gestiones"])
         for i, (banco, conteo) in enumerate(tipos_top.items(), start=1):
             columnas_kpi[i].metric(banco, formato_entero(conteo))
 
@@ -2764,39 +2837,9 @@ with tab5:
         if sel_banco != "(Todos)":
             df_proy_f = df_proy_f[df_proy_f["Tipo de Banco"] == sel_banco]
 
-        st.caption(f"Mostrando {len(df_proy_f):,} proyectos")
+        st.caption(f"Mostrando {len(df_proy_f):,} proyectos/gestiones")
 
-        # ---- Vista: gráfico y tabla con avance físico ----
-        vista = selector_vista("vista_proyectos")
-
-        def fig_proyectos():
-            df_agg = (
-                df_proy_f.dropna(subset=["Ejecutado"])
-                .groupby("Línea Estratégica", as_index=False)
-                .agg(
-                    Ejecutado=("Ejecutado", "sum"),
-                    Meta=("Meta", "sum"),
-                    Registros=("Nombre del Proyecto", "count"),
-                )
-                .sort_values("Ejecutado", ascending=True)
-            )
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                name="Meta física", y=df_agg["Línea Estratégica"], x=df_agg["Meta"],
-                orientation="h", marker_color=COLORS["blue_dark"],
-            ))
-            fig.add_trace(go.Bar(
-                name="Ejecución física", y=df_agg["Línea Estratégica"], x=df_agg["Ejecutado"],
-                orientation="h", marker_color=COLORS["orange_deep"],
-            ))
-            fig.update_layout(
-                barmode="group", height=max(450, len(df_agg) * 60),
-                title=f"Meta física vs Ejecución por Línea Estratégica — Proyectos/Gestiones {filtro_vigencia}",
-                xaxis_title="Unidades físicas",
-            )
-            return fig
-
-        # Calcular avance físico por fila para la tabla
+        # Calcular avance físico por fila
         df_tabla_proy = df_proy_f.copy()
         df_tabla_proy["Avance"] = df_tabla_proy.apply(
             lambda r: (r["Ejecutado"] / r["Meta"])
@@ -2815,15 +2858,10 @@ with tab5:
             {"key": "Avance", "label": "Avance", "type": "pctbar"},
             {"key": "Estado en portafolio", "label": "Estado", "type": "text"},
         ]
-        render_vista(
-            vista,
-            fig_factory=fig_proyectos,
-            df_tabla=df_tabla_proy.head(200),
-            columnas=columnas_proy,
-        )
+        render_table(df_tabla_proy.head(200), columnas_proy)
 
         if len(df_proy_f) > 200:
-            st.caption("La tabla muestra los primeros 200 proyectos. Descarga el CSV para el listado completo.")
+            st.caption("La tabla muestra los primeros 200 registros. Descarga el CSV para el listado completo.")
 
         csv_proy = df_proy_f.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
@@ -2840,7 +2878,16 @@ with tab5:
 with tab6:
     seccion("06", "Detalle por Meta",
             "Consulta del inventario completo de indicadores de producto del Plan Indicativo, "
-            "enfocado en el avance físico por meta y vigencia.")
+            "enfocado en el avance físico por meta y vigencia.",
+            tooltip=(
+                "Tabla de granularidad meta a meta. 'Meta cuatrienio' es el "
+                "objetivo total al 2027. 'Meta {vigencia}' es la programación "
+                "para la vigencia seleccionada. 'Ejecución {vigencia}' es el "
+                "valor físico alcanzado. 'Avance {vigencia}' = Ejecución / Meta "
+                "de esa vigencia. 'Avance acumulado' integra todas las vigencias "
+                "transcurridas. La 'Categoría' clasifica el avance como Superior, "
+                "Satisfactorio, Aceptable, Bajo o Crítico."
+            ))
 
     prog_ff = datos["prog_fisica_financiera"]
     df_all = prog_ff.to_pandas()
@@ -2994,73 +3041,6 @@ with tab7:
                 use_container_width=False,
                 key="dl_xlsx",
             )
-
-    # ---------------------------------------------------------------------
-    # Panel de debug — desglose ejecución 2025
-    # ---------------------------------------------------------------------
-    st.markdown("<hr/>", unsafe_allow_html=True)
-    seccion("Debug", "Desglose ejecución 2025 por fuente",
-            "Muestra cuánto está aportando cada archivo al total de ejecución 2025. "
-            "Útil para verificar que la app está leyendo los mismos archivos que el notebook local.")
-
-    with st.expander("Mostrar desglose por fuente", expanded=False):
-        try:
-            dbg = debug_ejecucion_2025(
-                archivos_bytes["h25"], archivos_bytes["r25"],
-                archivos_bytes["ads_rp_25"], archivos_bytes["ads_reg_25"],
-                archivos_bytes["gestiones_25"], archivos_bytes["fondo_mixto_25"],
-                archivos_bytes["inder_25"],
-            )
-
-            # Tarjetas con totales
-            d1, d2, d3 = st.columns(3)
-            d1.metric("Suma directa de fuentes", formato_pesos(dbg["total_concat"]))
-            d2.metric("Total tras explode (notebook)", formato_pesos(dbg["total_explode"]))
-            d3.metric("Inflación por explode",
-                      formato_pesos(dbg["total_explode"] - dbg["total_concat"]))
-
-            st.markdown("##### Desglose por fuente")
-            df_resumen = dbg["resumen"]
-            columnas_dbg = [
-                {"key": "Fuente", "label": "Fuente", "type": "text"},
-                {"key": "Filas", "label": "Filas", "type": "int"},
-                {"key": "Filas multi-meta", "label": "Multi-meta", "type": "int"},
-                {"key": "RP crudo", "label": "RP crudo", "type": "money"},
-                {"key": "RP tras explode", "label": "RP tras explode", "type": "money"},
-                {"key": "Inflación", "label": "Inflación", "type": "money"},
-            ]
-            totales_dbg = {
-                "Filas": int(df_resumen["Filas"].sum()),
-                "Filas multi-meta": int(df_resumen["Filas multi-meta"].sum()),
-                "RP crudo": float(df_resumen["RP crudo"].sum()),
-                "RP tras explode": float(df_resumen["RP tras explode"].sum()),
-                "Inflación": float(df_resumen["Inflación"].sum()),
-            }
-            render_table(df_resumen, columnas_dbg, totales_dbg)
-
-            st.caption(
-                "**RP crudo** es la suma directa del campo RP por fuente (sin transformaciones). "
-                "**RP tras explode** simula lo que ocurre al separar los códigos de meta concatenados con `\" | \"`. "
-                "**Inflación** es la diferencia."
-            )
-
-            # Descarga del CSV con todo el detalle por fuente
-            df_full = pl.concat(
-                [df.with_columns(pl.lit(k).alias("Fuente"))
-                 for k, df in dbg["fuentes"].items()],
-                how="diagonal",
-            ).to_pandas()
-            csv_dbg = df_full.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "Descargar CSV con todas las filas de cada fuente",
-                data=csv_dbg,
-                file_name=f"debug_ejecucion_2025_{filtro_vigencia}.csv",
-                mime="text/csv",
-                key="dl_csv_debug",
-            )
-        except Exception as e:
-            st.error(f"No se pudo construir el debug: {e}")
-            st.exception(e)
 
 
 # =========================================================================
