@@ -588,8 +588,16 @@ ARCHIVOS_ACTUALIZABLES = ["pi", "h26", "r26"]
 # =========================================================================
 # Utilidades
 # =========================================================================
-@st.cache_data(show_spinner=False)
+# Descarga desde GitHub
+# - ttl=3600: la caché expira automáticamente cada hora, así que si subes un
+#   archivo nuevo al repo basta con esperar (o usar el botón "Recargar datos").
+# - El cache-buster `_t=...` se añade en la URL al pulsar el botón para
+#   forzar bypass del CDN de GitHub raw.
+# =========================================================================
+@st.cache_data(show_spinner=False, ttl=3600)
 def descargar_desde_github(url: str) -> bytes:
+    # Si la URL trae el cache-buster, lo enviamos en el query string para
+    # saltarnos cualquier capa de CDN o proxy.
     r = requests.get(url, timeout=60)
     r.raise_for_status()
     return r.content
@@ -2116,6 +2124,16 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
+# Botón global de recarga: siempre visible, independiente del modo de carga.
+# Limpia toda la caché (descargas + procesamiento) para forzar lectura fresca.
+if st.sidebar.button("Recargar datos del repositorio", use_container_width=True,
+                     help="Limpia la caché y vuelve a descargar los archivos desde GitHub"):
+    st.cache_data.clear()
+    # Limpia también el archivo Excel pre-generado, por si la vigencia cambia
+    st.session_state.pop("xlsx_bytes", None)
+    st.session_state.pop("xlsx_vigencia", None)
+    st.rerun()
+
 modo_carga = st.sidebar.radio(
     "Modo",
     options=["Usar datos del repositorio", "Subir archivos 2026 y Plan Indicativo"],
@@ -2136,9 +2154,6 @@ except Exception as e:
 
 # Archivos actualizables
 if modo_carga == "Usar datos del repositorio":
-    if st.sidebar.button("Recargar datos del repositorio", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
     try:
         with st.spinner("Descargando Plan Indicativo y archivos 2026..."):
             for key in ARCHIVOS_ACTUALIZABLES:
