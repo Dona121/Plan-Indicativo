@@ -92,10 +92,7 @@ html, body, [class*="css"], .stApp {{
 }}
 
 .stApp {{
-    background:
-        radial-gradient(1200px 600px at 90% -10%, rgba(23,84,171,0.06), transparent 60%),
-        radial-gradient(900px 500px at -10% 110%, rgba(216,140,22,0.05), transparent 60%),
-        var(--paper);
+    background: var(--paper);
 }}
 
 /* Encabezados H1..H6 con Montserrat (institucional, geométrica) */
@@ -590,7 +587,7 @@ corporate_template.layout = go.Layout(
         title=dict(font=dict(size=11, color="#4a5a6a")),
     ),
     legend=dict(
-        bgcolor="rgba(0,0,0,0)", bordercolor="#d9d4c7", borderwidth=1,
+        bgcolor="rgba(0,0,0,0)", bordercolor="#e3e3e1", borderwidth=1,
         font=dict(size=11, color="#0d1b2a"),
     ),
     margin=dict(l=60, r=30, t=60, b=60),
@@ -646,38 +643,56 @@ def descargar_desde_github(url: str) -> bytes:
 
 
 def formato_pesos(valor):
+    if valor is None:
+        return "—"
     try:
         v = float(valor)
+        if v != v:  # NaN
+            return "—"
         if abs(v) >= 1e9:
             return f"$ {v/1e9:,.2f} MM"
         if abs(v) >= 1e6:
             return f"$ {v/1e6:,.1f} M"
         return f"$ {v:,.0f}"
     except Exception:
-        return valor
+        return "—"
 
 
 def formato_porcentaje(valor):
+    if valor is None:
+        return "—"
     try:
-        return f"{valor*100:,.2f}%"
+        v = float(valor)
+        if v != v:  # NaN
+            return "—"
+        return f"{v*100:,.2f}%"
     except Exception:
-        return valor
+        return "—"
 
 
 def formato_pesos_completo(valor):
     """Formato completo $ xxx,xxx,xxx para las tablas."""
+    if valor is None:
+        return "—"
     try:
         v = float(valor)
+        if v != v:  # NaN
+            return "—"
         return f"$ {v:,.0f}"
     except Exception:
-        return valor
+        return "—"
 
 
 def formato_entero(valor):
+    if valor is None:
+        return "—"
     try:
-        return f"{int(valor):,}"
+        v = float(valor)
+        if v != v:  # NaN
+            return "—"
+        return f"{int(v):,}"
     except Exception:
-        return valor
+        return "—"
 
 
 def seccion(numero: str, titulo: str, kicker: str = "", tooltip: str = ""):
@@ -845,14 +860,18 @@ def pct_class(valor: float) -> str:
 
 
 def formato_numero_decimal(valor, decimales: int = 2):
+    if valor is None:
+        return "—"
     try:
         v = float(valor)
+        if v != v:  # NaN
+            return "—"
         # Si es entero sin decimales significativos, muestra sin decimales
         if v == int(v):
             return f"{int(v):,}"
         return f"{v:,.{decimales}f}"
     except Exception:
-        return valor
+        return "—"
 
 
 def render_table(df: pd.DataFrame, columnas: list, totales: dict = None):
@@ -1603,10 +1622,10 @@ def generar_excel_proyectos(
     XL_ORANGE    = "CF7000"
     XL_INK       = "0D1B2A"
     XL_INK_MUTE  = "4A5A6A"
-    XL_HAIRLINE  = "E2E0D8"
-    XL_BEIGE     = "F0EEE9"
-    XL_PAPER     = "FCFCFB"
-    XL_ALT_ROW   = "F7F7F4"
+    XL_HAIRLINE  = "E3E3E1"
+    XL_BEIGE     = "EDEDEB"
+    XL_PAPER     = "FFFFFF"
+    XL_ALT_ROW   = "F6F6F5"
 
     thin = Border(
         left=Side(style="thin", color=XL_HAIRLINE),
@@ -1706,10 +1725,17 @@ def generar_excel_proyectos(
     return output.getvalue()
 
 
-def construir_dataframe_proyectos_listo(datos: dict, vigencia: str) -> pd.DataFrame:
+@st.cache_data(show_spinner=False)
+def construir_dataframe_proyectos_listo(_datos: dict, vigencia: str) -> pd.DataFrame:
     """Toma construir_proyectos y agrega columnas calculadas (Indicador, Avance)
-    en el formato listo para mostrar/exportar."""
-    df = construir_proyectos(datos, vigencia).to_pandas()
+    en el formato listo para mostrar/exportar.
+
+    El parámetro _datos lleva underscore para indicar a Streamlit que no debe
+    intentar hashearlo (es un dict de polars DataFrames, no hashable).
+    El cache se invalida automáticamente cuando cambian los datos porque la
+    función procesar_datos también está cacheada y retorna un nuevo objeto.
+    """
+    df = construir_proyectos(_datos, vigencia).to_pandas()
     if df.empty:
         return df
 
@@ -1757,12 +1783,12 @@ def generar_reporte_excel(
     XL_ORANGE     = "CF7000"
     XL_ORANGE_LT  = "D88C16"
     XL_GREEN_LT   = "17743D"
-    XL_PAPER      = "FBFAF6"
-    XL_BEIGE      = "F1EDE2"
-    XL_HAIRLINE   = "D9D4C7"
+    XL_PAPER      = "FFFFFF"
+    XL_BEIGE      = "EDEDEB"
+    XL_HAIRLINE   = "E3E3E1"
     XL_INK        = "0D1B2A"
     XL_INK_MUTE   = "4A5A6A"
-    XL_BAR_BG     = "F1EDE2"
+    XL_BAR_BG     = "EDEDEB"
 
     # ---- Estilos base ----
     thin_border = Border(
@@ -1786,7 +1812,7 @@ def generar_reporte_excel(
     def estilo_dato(cell, alt=False):
         cell.font = Font(name="Open Sans", size=10, color=XL_INK)
         if alt:
-            cell.fill = PatternFill("solid", fgColor="FAF8F2")
+            cell.fill = PatternFill("solid", fgColor="F6F6F5")
         cell.border = thin_border
         cell.alignment = Alignment(vertical="center", wrap_text=True)
 
@@ -3198,7 +3224,7 @@ st.markdown(
     <div style='display: flex; justify-content: space-between; align-items: center;
                 padding: 0.6rem 0 1.2rem 0; font-size: 0.75rem; color: {COLORS["blue_dark"]};
                 font-family: {FONT_MONO}, monospace; letter-spacing: 0.08em;
-                border-top: 1px solid #d9d4c7;'>
+                border-top: 1px solid #e3e3e1;'>
         <span>Plan Indicativo · Sistema de Seguimiento 2024—2027</span>
         <span>Construido con Streamlit · Polars · Plotly</span>
     </div>
