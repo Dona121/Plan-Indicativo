@@ -1400,6 +1400,138 @@ def construir_proyectos(datos, vigencia):
 
 
 # =========================================================================
+# Debug — desglose de la ejecución financiera 2025 por fuente
+# =========================================================================
+@st.cache_data(show_spinner=False)
+def debug_ejecucion_2025(
+    h25_bytes, r25_bytes,
+    ads_rp_25_bytes, ads_reg_25_bytes, gestiones_25_bytes,
+    fondo_mixto_25_bytes, inder_25_bytes,
+):
+    """Lee cada archivo de 2025 por separado y devuelve diagnóstico por fuente.
+
+    Útil para verificar que la app está leyendo exactamente los mismos
+    archivos que el notebook local. El total final debe coincidir con
+    'Ejecución Financiera 2025' que se ve en los KPIs.
+    """
+    fuentes_brutas = {}
+
+    # 1. Regalías 2025
+    fuentes_brutas["1. Regalías 2025"] = (
+        pl.read_excel(io.BytesIO(r25_bytes), table_name="Pagos_Regalias_2025")
+        .select("PAGOS REGALIAS", "CODIGO META", "CLASIFICACIÓN RECURSOS")
+        .rename({"PAGOS REGALIAS": "RP"})
+        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
+        .filter(pl.col("CODIGO META") != "")
+    )
+
+    # 2. Hacienda 2025
+    fuentes_brutas["2. Hacienda 2025"] = (
+        pl.read_excel(io.BytesIO(h25_bytes), table_name="EjecucionHaciendaDiciembre2025")
+        .with_columns(
+            pl.col("PROYECTO ARCHIVADO", "CODIGO META", "CLASIFICACIÓN RECURSOS", "SE VA A CARGAR EN PI").fill_null(pl.lit("")),
+            pl.when(pl.col("DISTRIBUIR DE FORMA EQUITATIVA") == "SI").then(pl.col("RP") / 2).otherwise(pl.col("RP")),
+        )
+        .filter(
+            pl.col("PROYECTO ARCHIVADO") == "",
+            pl.col("CODIGO META") != "",
+            pl.col("CLASIFICACIÓN RECURSOS") != "",
+            pl.col("SE VA A CARGAR EN PI") == "",
+        )
+        .select("CODIGO META", "CLASIFICACIÓN RECURSOS", "RP")
+    )
+
+    # 3. ADS - Recursos propios
+    fuentes_brutas["3. ADS — Recursos propios"] = (
+        pl.read_excel(io.BytesIO(ads_rp_25_bytes), table_name="PagosAguasDeSucre")
+        .select("VALOR DEL PAGO", "CLASIFICACIÓN RECURSOS", "CODIGO META")
+        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
+        .filter(pl.col("CODIGO META") != "")
+        .rename({"VALOR DEL PAGO": "RP"})
+    )
+
+    # 4. ADS - Regalías
+    fuentes_brutas["4. ADS — Regalías"] = (
+        pl.read_excel(io.BytesIO(ads_reg_25_bytes), table_name="RegaliasAguasDeSucre")
+        .select("CODIGO DE META", "CLASIFICACIÓN RECURSOS", "PAGOS")
+        .rename({"CODIGO DE META": "CODIGO META", "PAGOS": "RP"})
+        .with_columns(pl.col("CODIGO META").fill_null(pl.lit("")))
+        .filter(pl.col("CODIGO META") != "")
+    )
+
+    # 5. Gestiones
+    fuentes_brutas["5. Gestiones"] = (
+        pl.read_excel(io.BytesIO(gestiones_25_bytes), table_name="EjecucionGestiones")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # 6. PDET
+    fuentes_brutas["6. PDET"] = (
+        pl.read_excel(io.BytesIO(h25_bytes), table_name="EjecucionPDET")
+        .select("EJECUCION FINANCIERA", "CODIGO META", "CLASIFICACIÓN RECURSOS")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # 7. Fondo Mixto
+    fuentes_brutas["7. Fondo Mixto"] = (
+        pl.read_excel(io.BytesIO(fondo_mixto_25_bytes), table_name="EjecucionFinancieraFondoMixto")
+        .select("CLASIFICACIÓN RECURSOS", "EJECUCION FINANCIERA", "CODIGO META")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # 8. Indersucre - Recursos Propios
+    fuentes_brutas["8. Indersucre — Recursos Propios"] = (
+        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERTerritorio")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # 9. Indersucre - Regalías
+    fuentes_brutas["9. Indersucre — Regalías"] = (
+        pl.read_excel(io.BytesIO(inder_25_bytes), table_name="EjecucionFinancieraINDERRegalias")
+        .rename({"EJECUCION FINANCIERA": "RP"})
+    )
+
+    # Resumen por fuente
+    filas_resumen = []
+    for nombre, df in fuentes_brutas.items():
+        rp_crudo = df.select(pl.col("RP").sum()).item() or 0
+        df_explode = df.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
+        rp_explode = df_explode.select(pl.col("RP").sum()).item() or 0
+        n_multi = (
+            df.with_columns(pl.col("CODIGO META").str.split(" | ").list.len().alias("n"))
+            .filter(pl.col("n") > 1)
+            .height
+        )
+        filas_resumen.append({
+            "Fuente": nombre,
+            "Filas": df.height,
+            "Filas multi-meta": n_multi,
+            "RP crudo": rp_crudo,
+            "RP tras explode": rp_explode,
+            "Inflación": rp_explode - rp_crudo,
+        })
+
+    df_resumen = pd.DataFrame(filas_resumen)
+
+    # Total final replicando exactamente el flujo del notebook
+    concat_total = pl.concat(list(fuentes_brutas.values()), how="diagonal")
+    total_concat = concat_total.select(pl.col("RP").sum()).item() or 0
+    total_explode = (
+        concat_total
+        .with_columns(pl.col("CODIGO META").str.split(" | "))
+        .explode("CODIGO META")
+        .select(pl.col("RP").sum()).item() or 0
+    )
+
+    return {
+        "fuentes": fuentes_brutas,
+        "resumen": df_resumen,
+        "total_concat": total_concat,
+        "total_explode": total_explode,
+    }
+
+
+# =========================================================================
 # Exportación a Excel con formato corporativo
 # =========================================================================
 def generar_reporte_excel(
@@ -2847,6 +2979,74 @@ with tab7:
                 use_container_width=False,
                 key="dl_xlsx",
             )
+
+    # ---------------------------------------------------------------------
+    # Panel de debug — desglose ejecución 2025
+    # ---------------------------------------------------------------------
+    st.markdown("<hr/>", unsafe_allow_html=True)
+    seccion("Debug", "Desglose ejecución 2025 por fuente",
+            "Muestra cuánto está aportando cada archivo al total de ejecución 2025. "
+            "Útil para verificar que la app está leyendo los mismos archivos que el notebook local.")
+
+    with st.expander("Mostrar desglose por fuente", expanded=False):
+        try:
+            dbg = debug_ejecucion_2025(
+                archivos_bytes["h25"], archivos_bytes["r25"],
+                archivos_bytes["ads_rp_25"], archivos_bytes["ads_reg_25"],
+                archivos_bytes["gestiones_25"], archivos_bytes["fondo_mixto_25"],
+                archivos_bytes["inder_25"],
+            )
+
+            # Tarjetas con totales
+            d1, d2, d3 = st.columns(3)
+            d1.metric("Suma directa de fuentes", formato_pesos(dbg["total_concat"]))
+            d2.metric("Total tras explode (notebook)", formato_pesos(dbg["total_explode"]))
+            d3.metric("Inflación por explode",
+                      formato_pesos(dbg["total_explode"] - dbg["total_concat"]))
+
+            st.markdown("##### Desglose por fuente")
+            df_resumen = dbg["resumen"]
+            columnas_dbg = [
+                {"key": "Fuente", "label": "Fuente", "type": "text"},
+                {"key": "Filas", "label": "Filas", "type": "int"},
+                {"key": "Filas multi-meta", "label": "Multi-meta", "type": "int"},
+                {"key": "RP crudo", "label": "RP crudo", "type": "money"},
+                {"key": "RP tras explode", "label": "RP tras explode", "type": "money"},
+                {"key": "Inflación", "label": "Inflación", "type": "money"},
+            ]
+            totales_dbg = {
+                "Filas": int(df_resumen["Filas"].sum()),
+                "Filas multi-meta": int(df_resumen["Filas multi-meta"].sum()),
+                "RP crudo": float(df_resumen["RP crudo"].sum()),
+                "RP tras explode": float(df_resumen["RP tras explode"].sum()),
+                "Inflación": float(df_resumen["Inflación"].sum()),
+            }
+            render_table(df_resumen, columnas_dbg, totales_dbg)
+
+            st.caption(
+                "**RP crudo** es la suma directa del campo RP por fuente (sin transformaciones). "
+                "**RP tras explode** simula lo que ocurre al separar los códigos de meta concatenados con `\" | \"`. "
+                "**Inflación** es la diferencia."
+            )
+
+            # Descarga del CSV con todo el detalle por fuente
+            df_full = pl.concat(
+                [df.with_columns(pl.lit(k).alias("Fuente"))
+                 for k, df in dbg["fuentes"].items()],
+                how="diagonal",
+            ).to_pandas()
+            csv_dbg = df_full.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "Descargar CSV con todas las filas de cada fuente",
+                data=csv_dbg,
+                file_name=f"debug_ejecucion_2025_{filtro_vigencia}.csv",
+                mime="text/csv",
+                key="dl_csv_debug",
+            )
+        except Exception as e:
+            st.error(f"No se pudo construir el debug: {e}")
+            st.exception(e)
+
 
 # =========================================================================
 # Pie de página
