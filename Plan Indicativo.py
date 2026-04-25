@@ -2937,22 +2937,11 @@ with tab4:
     if df_dep.empty:
         st.info("No hay dependencias con metas programadas en la vigencia seleccionada.")
     else:
-        vista = selector_vista("vista_dep")
-
-        def fig_dep():
-            df_plot = df_dep.sort_values(f"Porcentaje de Ejecución {filtro_vigencia}", ascending=True)
-            fig = px.bar(
-                df_plot, x=f"Porcentaje de Ejecución {filtro_vigencia}", y="Dependencia Responsable",
-                orientation="h", text=f"Porcentaje de Ejecución {filtro_vigencia}",
-                color=f"Porcentaje de Ejecución {filtro_vigencia}", color_continuous_scale=SCALE_ORANGE,
-                title=f"Porcentaje de Ejecución Física por Dependencia — {filtro_vigencia}",
-            )
-            fig.update_traces(texttemplate="%{text:.1%}", textposition="outside",
-                              marker_line_color=COLORS["brown"], marker_line_width=0.5)
-            fig.update_layout(xaxis_tickformat=".0%",
-                              height=max(450, len(df_plot) * 32),
-                              showlegend=False, coloraxis_showscale=False, bargap=0.25)
-            return fig
+        # Ordenamos por avance descendente para que la tabla se lea de mejor a peor
+        df_dep = df_dep.sort_values(
+            f"Porcentaje de Ejecución {filtro_vigencia}",
+            ascending=False, na_position="last",
+        )
 
         columnas_dep = [
             {"key": "Dependencia Responsable", "label": "Dependencia", "type": "text"},
@@ -2961,7 +2950,7 @@ with tab4:
             {"key": f"Porcentaje de Ejecución {filtro_vigencia}", "label": f"Avance {filtro_vigencia}", "type": "pctbar"},
             {"key": "Porcentaje de Ejecución Acumulada", "label": "Avance acumulado", "type": "pctbar"},
         ]
-        render_vista(vista, fig_factory=fig_dep, df_tabla=df_dep, columnas=columnas_dep)
+        render_table(df_dep, columnas_dep)
 
 # -----------------------------------------------------------------
 # 05. PROYECTOS
