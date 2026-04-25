@@ -922,35 +922,21 @@ def procesar_datos(
     ejec_2024 = pl.concat([ejecucion_regalias_2024, ejecucion_hacienda_2024], how="diagonal") \
         .group_by("CODIGO META").agg(pl.col("RP").sum().alias("Ejecución Financiera 2024"))
 
-    # 2025: las fuentes adicionales traen códigos múltiples separados por " | ".
-    #
-    # Antes simplemente exploábamos la lista, lo que daba a CADA meta el RP completo
-    # de la fila original (un pago de 1M para "MT01 | MT02 | MT03" se contaba 3 veces).
-    # Eso INFLABA el total de ejecución (en el caso real, hasta 1.29 B COP).
-    #
-    # La corrección distribuye el RP equitativamente entre las metas antes de explotar,
-    # de forma análoga a como Hacienda 2025/2026 ya hace cuando "DISTRIBUIR DE FORMA
-    # EQUITATIVA == SI" (divide el RP entre 2). Aquí lo generalizamos a N metas.
-    ejec_2025_concat = pl.concat([
-        ejecucion_regalias_2025, ejecucion_hacienda_2025,
-        ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
-        ejecucion_2025_gestiones, ejecucion_pdet_2025,
-        ejecucion_2025_fondo_mixto,
-        ejecucion_2025_indersucre_recursos_propios,
-        ejecucion_2025_indersucre_regalias,
-    ], how="diagonal")
-
+    # 2025: las fuentes adicionales pueden traer códigos múltiples separados por " | ".
+    # El notebook hace str.split(" | ").explode() SIN dividir el RP, por lo que cada
+    # meta de un código múltiple recibe el RP completo de la fila original.
+    # Esto puede inflar el total cuando se suma sobre todas las metas — pero es lo
+    # que hace el notebook y la app debe reflejarlo fielmente.
     ejec_2025_full = (
-        ejec_2025_concat
-        .with_columns(pl.col("CODIGO META").str.split(" | ").alias("_metas"))
-        .with_columns(
-            pl.when(pl.col("_metas").list.len() > 1)
-              .then(pl.col("RP") / pl.col("_metas").list.len())
-              .otherwise(pl.col("RP"))
-              .alias("RP")
-        )
-        .drop("CODIGO META")
-        .rename({"_metas": "CODIGO META"})
+        pl.concat([
+            ejecucion_regalias_2025, ejecucion_hacienda_2025,
+            ejecucion_2025_ads_recursos_propios, ejecucion_2025_ads_regalias,
+            ejecucion_2025_gestiones, ejecucion_pdet_2025,
+            ejecucion_2025_fondo_mixto,
+            ejecucion_2025_indersucre_recursos_propios,
+            ejecucion_2025_indersucre_regalias,
+        ], how="diagonal")
+        .with_columns(pl.col("CODIGO META").str.split(" | "))
         .explode("CODIGO META")
     )
     ejec_2025 = ejec_2025_full.group_by("CODIGO META").agg(
@@ -1079,20 +1065,20 @@ def construir_ejecucion_financ_tipo(datos, vigencia):
 def construir_ejecucion_acumulada_tipo(datos):
     """Acumulado por CLASIFICACIÓN RECURSOS para todo el cuatrienio.
 
-    NOTA: para 2025 NO se hace explode por '| '. La clasificación de recursos
-    es atributo de la fila completa (un pago tiene UNA clasificación), por lo que
-    explotar por código de meta solo duplicaría el RP bajo la misma fuente.
-    Esto difiere del agregado por CÓDIGO META, donde el explode es necesario
-    pero acompañado de división del RP entre el número de metas.
+    Replica exactamente la lógica del notebook (bloque ejecucion_2024_agrp,
+    ejecucion_2025_agrp, ejecucion_2026_agrp). En 2025 se hace explode por
+    " | " antes de agrupar — el notebook lo hace así y la app lo replica.
     """
     orden_fuentes = datos["orden_fuentes"]
     prog_financ_tipo = datos["prog_financ_tipo"]
 
     agrp = {}
     for v in ["2024", "2025", "2026"]:
+        concat = pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
+        if v == "2025":
+            concat = concat.with_columns(pl.col("CODIGO META").str.split(" | ")).explode("CODIGO META")
         agrp[v] = (
-            pl.concat(datos["ejecuciones_financieras"][v], how="diagonal")
-            .group_by("CLASIFICACIÓN RECURSOS")
+            concat.group_by("CLASIFICACIÓN RECURSOS")
             .agg(pl.col("RP").sum().alias(f"Ejecución Financiera {v}"))
         )
 
@@ -1152,11 +1138,11 @@ def construir_prog_financ_categorias(datos, vigencia):
 
 
 def construir_ejec_por_dependencia(datos, vigencia):
-    """Equivalente a 'ejecucion_por_dependencia' del notebook.
+    """Replica exactamente 'ejecucion_por_dependencia' del notebook.
 
-    Usamos join 'inner' con la homologación de secretarías (como hace
-    'avance_por_dependencia' en el notebook), así evitamos filas donde la
-    dependencia no tiene homologación y aparecen con valores vacíos.
+    Usa join 'left' con la homologación de secretarías, igual que el notebook.
+    El otro DataFrame del notebook ('avance_por_dependencia') usa inner pero
+    no es el que alimenta esta tabla principal.
     """
     prog_ff = datos["prog_fisica_financiera"]
     homologacion = datos["homologacion_secretarias"]
@@ -1184,7 +1170,7 @@ def construir_ejec_por_dependencia(datos, vigencia):
             pl.col(f"Metas Programadas {vigencia}").sum(),
             pl.col(f"Metas Cumplidas al 100% {vigencia}").sum(),
         )
-        .join(homologacion, left_on="Responsable", right_on="Responsable en PI", how="inner")
+        .join(homologacion, left_on="Responsable", right_on="Responsable en PI", how="left")
         .join(ejec_acumulada, on="Responsable", how="left")
         .select("Varias Secretarías", "Dependencia Responsable",
                 f"Metas Programadas {vigencia}", f"Metas Cumplidas al 100% {vigencia}",
@@ -1348,6 +1334,10 @@ def construir_proyectos(datos, vigencia):
         r"meta\s+de\s+la\s+vigencia"
         r"))\s*:\s*([^()]+?)\s*\)"
     )
+    # NOTA: el notebook usa literal "2024" en este patrón (línea 845 del notebook).
+    # En la app generalizamos a \d{4} para que la extracción funcione también en
+    # vigencia 2025/2026. Si el texto solo trae "Ejecución 2024", el comportamiento
+    # es idéntico al del notebook.
     patron_ejecutado = (
         r"\((?i:(?:"
         r"ejecuci(?:ón|on)\s+\d{4}|"
