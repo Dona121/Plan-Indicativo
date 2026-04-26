@@ -106,13 +106,10 @@ h2, h3 {{ font-weight: 700 !important; }}
 h4, h5, h6 {{ font-weight: 600 !important; }}
 
 /* Footer oculto. NO tocamos el header ni el toolbar: Streamlit usa esos
-   contenedores para el botón de reabrir la sidebar cuando está colapsada,
-   y cualquier regla sobre [data-testid="collapsedControl"] o el toolbar
-   la rompe. */
+   contenedores para el botón de reabrir la sidebar cuando está colapsada
+   y para el menú de opciones (tres puntos), y cualquier regla que los
+   afecte rompe esa interacción. */
 footer {{ visibility: hidden; }}
-
-/* Menú hamburguesa oculto sin tocar el resto del header */
-#MainMenu {{ visibility: hidden; }}
 
 /* Reducir el padding del contenedor principal para aprovechar más el ancho.
    Streamlit usa por defecto ~6rem de padding lateral, demasiado para una
@@ -2456,7 +2453,7 @@ st.markdown(
     f"""
     <div class="masthead">
         <div>
-            <div class="eyebrow">Informe de Seguimiento  /  Número {filtro_vigencia[-2:]}</div>
+            <div class="eyebrow">Informe de Seguimiento  /  Vigencia {filtro_vigencia}</div>
             <h1>Plan <em>Indicativo</em></h1>
         </div>
         <div class="edition">
